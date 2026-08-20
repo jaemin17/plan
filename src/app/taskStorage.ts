@@ -1,4 +1,4 @@
-import type { LocalTask } from "./taskModel";
+import { layoutAllChildTasks, type BoardSize, type LocalTask } from "./taskModel.ts";
 
 export const STORAGE_KEY = "plan.local-tasks";
 
@@ -33,7 +33,7 @@ function parseStoredTask(task: StoredTask): LocalTask | null {
   };
 }
 
-export function readStoredTasks(): LocalTask[] {
+export function readStoredTasks(boardSize?: BoardSize): LocalTask[] {
   if (typeof window === "undefined") return [];
 
   try {
@@ -52,7 +52,7 @@ export function readStoredTasks(): LocalTask[] {
       if (task) tasks.push(task);
     }
 
-    return tasks;
+    return layoutAllChildTasks(tasks, boardSize);
   } catch {
     return [];
   }

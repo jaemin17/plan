@@ -27,7 +27,7 @@ beforeEach(() => {
   installLocalStorage();
 });
 
-test("reads valid stored tasks from localStorage", () => {
+test("reads valid stored tasks from localStorage and normalizes child layout", () => {
   window.localStorage.setItem(
     STORAGE_KEY,
     JSON.stringify([
@@ -49,7 +49,7 @@ test("reads valid stored tasks from localStorage", () => {
 
   assert.deepEqual(readStoredTasks(), [
     { id: "task-1", text: "写计划", xPercent: 40, yPercent: 42 },
-    { id: "task-2", text: "拆子任务", xPercent: 54, yPercent: 48, parentId: "task-1" },
+    { id: "task-2", text: "拆子任务", xPercent: 54, yPercent: 50, parentId: "task-1" },
   ]);
 });
 

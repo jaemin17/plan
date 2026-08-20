@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   attachTaskToParent,
   createBlankTask,
+  deleteTask,
   detachTaskFromParent,
   layoutChildTasks,
   moveTask,
@@ -34,7 +35,7 @@ test("attaches a task to a parent and places it after the parent", () => {
 
   assert.equal(attached.parentId, "task-1");
   assert.equal(attached.xPercent, 54);
-  assert.equal(attached.yPercent, 48);
+  assert.equal(attached.yPercent, 50);
 });
 
 test("does not attach a task to itself", () => {
@@ -78,8 +79,63 @@ test("lays out multiple child tasks in a vertical stack after the parent", () =>
     })),
     [
       { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
-      { id: "task-2", parentId: "task-1", xPercent: 54, yPercent: 48 },
-      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 55 },
+      { id: "task-2", parentId: "task-1", xPercent: 54, yPercent: 50 },
+      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 58 },
     ],
   );
+});
+
+test("clamps child task spacing to pixel bounds when board size is known", () => {
+  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
+  const firstChild = { ...createBlankTask(2), parentId: parent.id };
+  const secondChild = { ...createBlankTask(3), parentId: parent.id };
+
+  const laidOut = layoutChildTasks([parent, firstChild, secondChild], parent.id, {
+    width: 3000,
+    height: 1600,
+  });
+
+  assert.deepEqual(
+    laidOut.map((task) => ({
+      id: task.id,
+      parentId: task.parentId,
+      xPercent: task.xPercent,
+      yPercent: task.yPercent,
+    })),
+    [
+      { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
+      { id: "task-2", parentId: "task-1", xPercent: 44.4, yPercent: 46.25 },
+      { id: "task-3", parentId: "task-1", xPercent: 44.4, yPercent: 50.5 },
+    ],
+  );
+});
+
+test("deletes a child task and relayouts the remaining siblings", () => {
+  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
+  const firstChild = { ...createBlankTask(2), parentId: parent.id, xPercent: 54, yPercent: 50 };
+  const secondChild = { ...createBlankTask(3), parentId: parent.id, xPercent: 54, yPercent: 58 };
+
+  const remaining = deleteTask([parent, firstChild, secondChild], firstChild.id);
+
+  assert.deepEqual(
+    remaining.map((task) => ({
+      id: task.id,
+      parentId: task.parentId,
+      xPercent: task.xPercent,
+      yPercent: task.yPercent,
+    })),
+    [
+      { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
+      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 50 },
+    ],
+  );
+});
+
+test("deletes a parent task and promotes its children", () => {
+  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
+  const child = { ...createBlankTask(2), parentId: parent.id, xPercent: 54, yPercent: 48 };
+
+  const remaining = deleteTask([parent, child], parent.id);
+
+  assert.deepEqual(remaining, [{ id: "task-2", text: "", xPercent: 54, yPercent: 48 }]);
 });

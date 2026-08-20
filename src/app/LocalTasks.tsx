@@ -6,6 +6,8 @@ import {
   attachTaskToParent,
   createBlankTask,
   detachTaskFromParent,
+  deleteTask,
+  layoutAllChildTasks,
   layoutChildTasks,
   moveTask,
   type LocalTask,
@@ -25,15 +27,18 @@ export function LocalTasks() {
   const [nextTaskIndex, setNextTaskIndex] = useState(1);
   const [hasLoadedStoredTasks, setHasLoadedStoredTasks] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
+  const [isOverTrash, setIsOverTrash] = useState(false);
   const [isToolbarMenuOpen, setIsToolbarMenuOpen] = useState(false);
   const toolbarCloseTimeoutRef = useRef<number | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
   const taskLayerRef = useRef<HTMLDivElement | null>(null);
+  const trashRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
 
   useEffect(() => {
     queueMicrotask(() => {
-      const storedTasks = readStoredTasks();
+      const storedTasks = readStoredTasks(boardSize());
       setTasks(storedTasks);
       setNextTaskIndex(storedTasks.length + 1);
       setHasLoadedStoredTasks(true);
@@ -45,6 +50,17 @@ export function LocalTasks() {
 
     writeStoredTasks(tasks);
   }, [hasLoadedStoredTasks, tasks]);
+
+  useEffect(() => {
+    if (!hasLoadedStoredTasks || draggingTaskId) return;
+
+    function relayoutStoredChildren() {
+      setTasks((currentTasks) => layoutAllChildTasks(currentTasks, boardSize()));
+    }
+
+    window.addEventListener("resize", relayoutStoredChildren);
+    return () => window.removeEventListener("resize", relayoutStoredChildren);
+  }, [draggingTaskId, hasLoadedStoredTasks]);
 
   useEffect(() => {
     if (!editingTaskId) return;
@@ -118,6 +134,32 @@ export function LocalTasks() {
     };
   }
 
+  function boardSize() {
+    const layer = taskLayerRef.current;
+    if (!layer) return undefined;
+
+    const rect = layer.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return undefined;
+
+    return {
+      width: rect.width,
+      height: rect.height,
+    };
+  }
+
+  function isPointerOverTrash(event: PointerEvent<HTMLElement>) {
+    const trash = trashRef.current;
+    if (!trash) return false;
+
+    const rect = trash.getBoundingClientRect();
+    return (
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom
+    );
+  }
+
   function startDraggingTask(task: LocalTask, event: PointerEvent<HTMLDivElement>) {
     if (event.target instanceof HTMLInputElement) return;
 
@@ -133,6 +175,8 @@ export function LocalTasks() {
       lastYPercent: task.yPercent,
     };
     setEditingTaskId(null);
+    setDraggingTaskId(task.id);
+    setIsOverTrash(isPointerOverTrash(event));
   }
 
   function dragTask(event: PointerEvent<HTMLDivElement>) {
@@ -146,6 +190,7 @@ export function LocalTasks() {
     const nextY = point.yPercent - dragState.offsetYPercent;
     const deltaX = nextX - dragState.lastXPercent;
     const deltaY = nextY - dragState.lastYPercent;
+    const nextIsOverTrash = isPointerOverTrash(event);
 
     setTasks((currentTasks) =>
       currentTasks.map((task) => {
@@ -163,11 +208,21 @@ export function LocalTasks() {
 
     dragState.lastXPercent = nextX;
     dragState.lastYPercent = nextY;
+    setIsOverTrash(nextIsOverTrash);
   }
 
   function stopDraggingTask(event: PointerEvent<HTMLDivElement>) {
     const dragState = dragStateRef.current;
     if (!dragState) return;
+
+    if (isPointerOverTrash(event)) {
+      setTasks((currentTasks) => deleteTask(currentTasks, dragState.taskId, boardSize()));
+      dragStateRef.current = null;
+      setDraggingTaskId(null);
+      setIsOverTrash(false);
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      return;
+    }
 
     setTasks((currentTasks) => {
       const draggedTask = currentTasks.find((task) => task.id === dragState.taskId);
@@ -188,17 +243,19 @@ export function LocalTasks() {
           task.id === draggedTask.id ? detachTaskFromParent(task) : task,
         );
 
-        return layoutChildTasks(detachedTasks, draggedTask.parentId);
+        return layoutChildTasks(detachedTasks, draggedTask.parentId, boardSize());
       }
 
       const attachedTasks = currentTasks.map((task) =>
-        task.id === draggedTask.id ? attachTaskToParent(task, parent) : task,
+        task.id === draggedTask.id ? attachTaskToParent(task, parent, boardSize()) : task,
       );
 
-      return layoutChildTasks(attachedTasks, parent.id);
+      return layoutChildTasks(attachedTasks, parent.id, boardSize());
     });
 
     dragStateRef.current = null;
+    setDraggingTaskId(null);
+    setIsOverTrash(false);
     event.currentTarget.releasePointerCapture(event.pointerId);
   }
 
@@ -287,6 +344,37 @@ export function LocalTasks() {
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div
+        ref={trashRef}
+        className={[
+          styles.trashZone,
+          draggingTaskId ? styles.trashZoneActive : "",
+          isOverTrash ? styles.trashZoneHover : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        aria-label="Drag here to delete task"
+      >
+        <svg
+          className={styles.trashIcon}
+          viewBox="0 0 24 24"
+          focusable="false"
+          aria-hidden="true"
+        >
+          <g className={styles.trashLid}>
+            <path
+              fill="currentColor"
+              d="M9.7 2.9h4.6c.45 0 .8.35.8.8V4.55H8.9V3.7c0-.45.35-.8.8-.8ZM5.35 4.55h13.3c.55 0 1 .45 1 1v.35c0 .28-.22.5-.5.5H4.85c-.28 0-.5-.22-.5-.5v-.35c0-.55.45-1 1-1Z"
+            />
+          </g>
+          <path
+            fill="currentColor"
+            fillRule="evenodd"
+            d="M5.55 7.85 6.55 19.9c.1 1.05.98 1.85 2.04 1.85h6.82c1.06 0 1.94-.8 2.04-1.85L18.45 7.85H5.55Zm3.05 2.35c.38 0 .68.3.68.68v5.8a.68.68 0 0 1-1.36 0v-5.8c0-.38.3-.68.68-.68Zm3.4 0c.38 0 .68.3.68.68v5.8a.68.68 0 0 1-1.36 0v-5.8c0-.38.3-.68.68-.68Zm3.4 0c.38 0 .68.3.68.68v5.8a.68.68 0 0 1-1.36 0v-5.8c0-.38.3-.68.68-.68Z"
+          />
+        </svg>
       </div>
     </>
   );
