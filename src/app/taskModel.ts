@@ -3,6 +3,7 @@ export type LocalTask = {
   text: string;
   xPercent: number;
   yPercent: number;
+  parentId?: string;
 };
 
 export function createBlankTask(index: number): LocalTask {
@@ -23,5 +24,16 @@ export function moveTask(task: LocalTask, xPercent: number, yPercent: number): L
     ...task,
     xPercent: clampPercent(xPercent),
     yPercent: clampPercent(yPercent),
+  };
+}
+
+export function attachTaskToParent(task: LocalTask, parent: LocalTask): LocalTask {
+  if (task.id === parent.id) return task;
+
+  return {
+    ...task,
+    parentId: parent.id,
+    xPercent: clampPercent(parent.xPercent + 14),
+    yPercent: clampPercent(parent.yPercent + 6),
   };
 }

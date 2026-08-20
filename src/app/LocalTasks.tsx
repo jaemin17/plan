@@ -2,12 +2,14 @@
 
 import { ChangeEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
-import { createBlankTask, moveTask, type LocalTask } from "./taskModel";
+import { attachTaskToParent, createBlankTask, moveTask, type LocalTask } from "./taskModel";
 
 type DragState = {
   taskId: string;
   offsetXPercent: number;
   offsetYPercent: number;
+  lastXPercent: number;
+  lastYPercent: number;
 };
 
 export function LocalTasks() {
@@ -65,6 +67,7 @@ export function LocalTasks() {
     setTasks((currentTasks) =>
       currentTasks.map((task, index) => ({
         ...task,
+        parentId: undefined,
         xPercent: 50,
         yPercent: 50 + index * 6,
       })),
@@ -102,6 +105,8 @@ export function LocalTasks() {
       taskId: task.id,
       offsetXPercent: point.xPercent - task.xPercent,
       offsetYPercent: point.yPercent - task.yPercent,
+      lastXPercent: task.xPercent,
+      lastYPercent: task.yPercent,
     };
     setEditingTaskId(null);
   }
@@ -113,21 +118,51 @@ export function LocalTasks() {
     const point = pointerPercent(event);
     if (!point) return;
 
+    const nextX = point.xPercent - dragState.offsetXPercent;
+    const nextY = point.yPercent - dragState.offsetYPercent;
+    const deltaX = nextX - dragState.lastXPercent;
+    const deltaY = nextY - dragState.lastYPercent;
+
     setTasks((currentTasks) =>
-      currentTasks.map((task) =>
-        task.id === dragState.taskId
-          ? moveTask(
-              task,
-              point.xPercent - dragState.offsetXPercent,
-              point.yPercent - dragState.offsetYPercent,
-            )
-          : task,
-      ),
+      currentTasks.map((task) => {
+        if (task.id === dragState.taskId) {
+          return moveTask(task, nextX, nextY);
+        }
+
+        if (task.parentId === dragState.taskId) {
+          return moveTask(task, task.xPercent + deltaX, task.yPercent + deltaY);
+        }
+
+        return task;
+      }),
     );
+
+    dragState.lastXPercent = nextX;
+    dragState.lastYPercent = nextY;
   }
 
   function stopDraggingTask(event: PointerEvent<HTMLDivElement>) {
-    if (!dragStateRef.current) return;
+    const dragState = dragStateRef.current;
+    if (!dragState) return;
+
+    setTasks((currentTasks) => {
+      const draggedTask = currentTasks.find((task) => task.id === dragState.taskId);
+      if (!draggedTask) return currentTasks;
+
+      const parent = currentTasks.find(
+        (task) =>
+          task.id !== draggedTask.id &&
+          draggedTask.xPercent >= task.xPercent + 6 &&
+          draggedTask.xPercent <= task.xPercent + 24 &&
+          Math.abs(draggedTask.yPercent - task.yPercent) <= 12,
+      );
+
+      if (!parent) return currentTasks;
+
+      return currentTasks.map((task) =>
+        task.id === draggedTask.id ? attachTaskToParent(task, parent) : task,
+      );
+    });
 
     dragStateRef.current = null;
     event.currentTarget.releasePointerCapture(event.pointerId);
@@ -138,7 +173,7 @@ export function LocalTasks() {
       <div ref={taskLayerRef} className={styles.taskLayer} aria-label="任务标签">
         {tasks.map((task) => (
           <div
-            className={styles.taskTag}
+            className={`${styles.taskTag} ${task.parentId ? styles.childTaskTag : ""}`}
             key={task.id}
             onPointerDown={(event) => startDraggingTask(task, event)}
             onPointerMove={dragTask}
