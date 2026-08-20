@@ -1,8 +1,14 @@
 "use client";
 
-import { ChangeEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
-import { createBlankTask, type LocalTask } from "./taskModel";
+import { createBlankTask, moveTask, type LocalTask } from "./taskModel";
+
+type DragState = {
+  taskId: string;
+  offsetXPercent: number;
+  offsetYPercent: number;
+};
 
 export function LocalTasks() {
   const [tasks, setTasks] = useState<LocalTask[]>([]);
@@ -11,6 +17,8 @@ export function LocalTasks() {
   const [isToolbarMenuOpen, setIsToolbarMenuOpen] = useState(false);
   const toolbarCloseTimeoutRef = useRef<number | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
+  const taskLayerRef = useRef<HTMLDivElement | null>(null);
+  const dragStateRef = useRef<DragState | null>(null);
 
   useEffect(() => {
     if (!editingTaskId) return;
@@ -70,18 +78,78 @@ export function LocalTasks() {
     setIsToolbarMenuOpen(false);
   }
 
+  function pointerPercent(event: PointerEvent<HTMLElement>) {
+    const layer = taskLayerRef.current;
+    if (!layer) return null;
+
+    const rect = layer.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+
+    return {
+      xPercent: ((event.clientX - rect.left) / rect.width) * 100,
+      yPercent: ((event.clientY - rect.top) / rect.height) * 100,
+    };
+  }
+
+  function startDraggingTask(task: LocalTask, event: PointerEvent<HTMLDivElement>) {
+    if (event.target instanceof HTMLInputElement) return;
+
+    const point = pointerPercent(event);
+    if (!point) return;
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    dragStateRef.current = {
+      taskId: task.id,
+      offsetXPercent: point.xPercent - task.xPercent,
+      offsetYPercent: point.yPercent - task.yPercent,
+    };
+    setEditingTaskId(null);
+  }
+
+  function dragTask(event: PointerEvent<HTMLDivElement>) {
+    const dragState = dragStateRef.current;
+    if (!dragState) return;
+
+    const point = pointerPercent(event);
+    if (!point) return;
+
+    setTasks((currentTasks) =>
+      currentTasks.map((task) =>
+        task.id === dragState.taskId
+          ? moveTask(
+              task,
+              point.xPercent - dragState.offsetXPercent,
+              point.yPercent - dragState.offsetYPercent,
+            )
+          : task,
+      ),
+    );
+  }
+
+  function stopDraggingTask(event: PointerEvent<HTMLDivElement>) {
+    if (!dragStateRef.current) return;
+
+    dragStateRef.current = null;
+    event.currentTarget.releasePointerCapture(event.pointerId);
+  }
+
   return (
     <>
-      <div className={styles.taskLayer} aria-label="任务标签">
+      <div ref={taskLayerRef} className={styles.taskLayer} aria-label="任务标签">
         {tasks.map((task) => (
           <div
             className={styles.taskTag}
             key={task.id}
+            onPointerDown={(event) => startDraggingTask(task, event)}
+            onPointerMove={dragTask}
+            onPointerUp={stopDraggingTask}
+            onPointerCancel={stopDraggingTask}
             style={{
               left: `${task.xPercent}%`,
               top: `${task.yPercent}%`,
             }}
           >
+            <span className={styles.taskDragGrip} aria-hidden="true" />
             <input
               ref={editingTaskId === task.id ? editingInputRef : null}
               className={styles.taskInput}

@@ -113,10 +113,11 @@
   position: absolute;
   display: inline-flex;
   align-items: center;
+  gap: 9px;
   min-width: 156px;
   max-width: min(360px, calc(100vw - 48px));
   min-height: 38px;
-  padding: 0 14px;
+  padding: 0 14px 0 12px;
   border: 1px solid rgba(17, 18, 23, 0.12);
   border-radius: 999px;
   background:
@@ -125,7 +126,29 @@
   box-shadow:
     0 8px 18px rgba(17, 18, 23, 0.08),
     rgba(255, 255, 255, 0.55) 0 1px 2px 1px inset;
+  cursor: grab;
+  touch-action: none;
   transform: translate(-50%, -50%);
+  user-select: none;
+}
+
+.taskTag:active {
+  cursor: grabbing;
+}
+
+.taskDragGrip {
+  display: block;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  color: rgba(17, 18, 23, 0.28);
+  background:
+    radial-gradient(circle at 3px 3px, currentColor 0 1.2px, transparent 1.3px),
+    radial-gradient(circle at 3px 7px, currentColor 0 1.2px, transparent 1.3px),
+    radial-gradient(circle at 3px 11px, currentColor 0 1.2px, transparent 1.3px),
+    radial-gradient(circle at 9px 3px, currentColor 0 1.2px, transparent 1.3px),
+    radial-gradient(circle at 9px 7px, currentColor 0 1.2px, transparent 1.3px),
+    radial-gradient(circle at 9px 11px, currentColor 0 1.2px, transparent 1.3px);
 }
 
 .taskInput {
@@ -139,6 +162,8 @@
   font-weight: 600;
   line-height: 1;
   outline: none;
+  cursor: text;
+  user-select: text;
 }
 
 .taskInput::placeholder {

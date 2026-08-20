@@ -13,3 +13,15 @@ export function createBlankTask(index: number): LocalTask {
     yPercent: 50,
   };
 }
+
+function clampPercent(value: number) {
+  return Math.min(Math.max(value, 4), 96);
+}
+
+export function moveTask(task: LocalTask, xPercent: number, yPercent: number): LocalTask {
+  return {
+    ...task,
+    xPercent: clampPercent(xPercent),
+    yPercent: clampPercent(yPercent),
+  };
+}
