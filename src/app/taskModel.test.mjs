@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachTaskToParent, createBlankTask, moveTask } from "./taskModel.ts";
+import { attachTaskToParent, createBlankTask, layoutChildTasks, moveTask } from "./taskModel.ts";
 
 test("creates a blank task label near the center of the board", () => {
   const task = createBlankTask(2);
@@ -39,4 +39,26 @@ test("does not attach a task to itself", () => {
   assert.equal(attached.parentId, undefined);
   assert.equal(attached.xPercent, 50);
   assert.equal(attached.yPercent, 50);
+});
+
+test("lays out multiple child tasks in a vertical stack after the parent", () => {
+  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
+  const firstChild = { ...createBlankTask(2), parentId: parent.id };
+  const secondChild = { ...createBlankTask(3), parentId: parent.id };
+
+  const laidOut = layoutChildTasks([parent, firstChild, secondChild], parent.id);
+
+  assert.deepEqual(
+    laidOut.map((task) => ({
+      id: task.id,
+      parentId: task.parentId,
+      xPercent: task.xPercent,
+      yPercent: task.yPercent,
+    })),
+    [
+      { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
+      { id: "task-2", parentId: "task-1", xPercent: 54, yPercent: 48 },
+      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 55 },
+    ],
+  );
 });

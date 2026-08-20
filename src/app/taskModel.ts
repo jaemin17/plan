@@ -37,3 +37,22 @@ export function attachTaskToParent(task: LocalTask, parent: LocalTask): LocalTas
     yPercent: clampPercent(parent.yPercent + 6),
   };
 }
+
+export function layoutChildTasks(tasks: LocalTask[], parentId: string): LocalTask[] {
+  const parent = tasks.find((task) => task.id === parentId);
+  if (!parent) return tasks;
+
+  let childIndex = 0;
+
+  return tasks.map((task) => {
+    if (task.parentId !== parentId) return task;
+
+    const laidOutTask = {
+      ...task,
+      xPercent: clampPercent(parent.xPercent + 14),
+      yPercent: clampPercent(parent.yPercent + 6 + childIndex * 7),
+    };
+    childIndex += 1;
+    return laidOutTask;
+  });
+}

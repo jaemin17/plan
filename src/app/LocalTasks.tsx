@@ -2,7 +2,13 @@
 
 import { ChangeEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
-import { attachTaskToParent, createBlankTask, moveTask, type LocalTask } from "./taskModel";
+import {
+  attachTaskToParent,
+  createBlankTask,
+  layoutChildTasks,
+  moveTask,
+  type LocalTask,
+} from "./taskModel";
 
 type DragState = {
   taskId: string;
@@ -159,9 +165,11 @@ export function LocalTasks() {
 
       if (!parent) return currentTasks;
 
-      return currentTasks.map((task) =>
+      const attachedTasks = currentTasks.map((task) =>
         task.id === draggedTask.id ? attachTaskToParent(task, parent) : task,
       );
+
+      return layoutChildTasks(attachedTasks, parent.id);
     });
 
     dragStateRef.current = null;
