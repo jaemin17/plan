@@ -1,12 +1,11 @@
 import styles from "./page.module.css";
+import { DateStamp } from "./DateStamp";
 
 export default function Home() {
   return (
-    <main className={styles.page}>
-      <section className={styles.shell} aria-label="计划工作区">
-        <p className={styles.kicker}>Plan</p>
-        <h1>计划</h1>
-      </section>
-    </main>
+    <div className={styles.page}>
+      <DateStamp />
+      <main className={styles.board} aria-label="计划工作区" />
+    </div>
   );
 }
