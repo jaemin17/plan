@@ -9,6 +9,7 @@ import {
   moveTask,
   type LocalTask,
 } from "./taskModel";
+import { readStoredTasks, writeStoredTasks } from "./taskStorage";
 
 type DragState = {
   taskId: string;
@@ -21,12 +22,28 @@ type DragState = {
 export function LocalTasks() {
   const [tasks, setTasks] = useState<LocalTask[]>([]);
   const [nextTaskIndex, setNextTaskIndex] = useState(1);
+  const [hasLoadedStoredTasks, setHasLoadedStoredTasks] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [isToolbarMenuOpen, setIsToolbarMenuOpen] = useState(false);
   const toolbarCloseTimeoutRef = useRef<number | null>(null);
   const editingInputRef = useRef<HTMLInputElement | null>(null);
   const taskLayerRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      const storedTasks = readStoredTasks();
+      setTasks(storedTasks);
+      setNextTaskIndex(storedTasks.length + 1);
+      setHasLoadedStoredTasks(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!hasLoadedStoredTasks) return;
+
+    writeStoredTasks(tasks);
+  }, [hasLoadedStoredTasks, tasks]);
 
   useEffect(() => {
     if (!editingTaskId) return;
