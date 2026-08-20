@@ -1,0 +1,156 @@
+"use client";
+
+import { ChangeEvent, useEffect, useRef, useState } from "react";
+import styles from "./page.module.css";
+import { createBlankTask, type LocalTask } from "./taskModel";
+
+export function LocalTasks() {
+  const [tasks, setTasks] = useState<LocalTask[]>([]);
+  const [nextTaskIndex, setNextTaskIndex] = useState(1);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [isToolbarMenuOpen, setIsToolbarMenuOpen] = useState(false);
+  const toolbarCloseTimeoutRef = useRef<number | null>(null);
+  const editingInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (!editingTaskId) return;
+
+    queueMicrotask(() => {
+      editingInputRef.current?.focus();
+    });
+  }, [editingTaskId]);
+
+  function openToolbarMenu() {
+    if (toolbarCloseTimeoutRef.current !== null) {
+      window.clearTimeout(toolbarCloseTimeoutRef.current);
+      toolbarCloseTimeoutRef.current = null;
+    }
+    setIsToolbarMenuOpen(true);
+  }
+
+  function scheduleCloseToolbarMenu() {
+    if (toolbarCloseTimeoutRef.current !== null) {
+      window.clearTimeout(toolbarCloseTimeoutRef.current);
+    }
+    toolbarCloseTimeoutRef.current = window.setTimeout(() => {
+      setIsToolbarMenuOpen(false);
+      toolbarCloseTimeoutRef.current = null;
+    }, 120);
+  }
+
+  function createTask() {
+    const task = createBlankTask(nextTaskIndex);
+
+    setTasks((currentTasks) => [...currentTasks, task]);
+    setNextTaskIndex((currentIndex) => currentIndex + 1);
+    setEditingTaskId(task.id);
+  }
+
+  function updateTaskText(taskId: string, event: ChangeEvent<HTMLInputElement>) {
+    const text = event.target.value;
+    setTasks((currentTasks) =>
+      currentTasks.map((task) => (task.id === taskId ? { ...task, text } : task)),
+    );
+  }
+
+  function organizeTasks() {
+    setTasks((currentTasks) =>
+      currentTasks.map((task, index) => ({
+        ...task,
+        xPercent: 50,
+        yPercent: 50 + index * 6,
+      })),
+    );
+    setIsToolbarMenuOpen(false);
+  }
+
+  function clearTasks() {
+    setTasks([]);
+    setEditingTaskId(null);
+    setIsToolbarMenuOpen(false);
+  }
+
+  return (
+    <>
+      <div className={styles.taskLayer} aria-label="任务标签">
+        {tasks.map((task) => (
+          <div
+            className={styles.taskTag}
+            key={task.id}
+            style={{
+              left: `${task.xPercent}%`,
+              top: `${task.yPercent}%`,
+            }}
+          >
+            <input
+              ref={editingTaskId === task.id ? editingInputRef : null}
+              className={styles.taskInput}
+              value={task.text}
+              onChange={(event) => updateTaskText(task.id, event)}
+              onFocus={() => setEditingTaskId(task.id)}
+              onBlur={() => setEditingTaskId(null)}
+              aria-label="Edit task"
+              placeholder="New task"
+            />
+          </div>
+        ))}
+      </div>
+
+      <div className={styles.taskToolbar} role="toolbar" aria-label="New task toolbar">
+        <button
+          className={styles.addTaskButton}
+          type="button"
+          onClick={createTask}
+          aria-label="New task"
+        >
+          <span className={styles.addTaskButtonLineIcon} aria-hidden="true">
+            <svg viewBox="0 0 24 24" focusable="false">
+              <path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z" />
+            </svg>
+          </span>
+          <span>New task</span>
+        </button>
+        <div
+          className={styles.toolbarMenu}
+          aria-label="More actions"
+          onMouseEnter={openToolbarMenu}
+          onMouseLeave={scheduleCloseToolbarMenu}
+        >
+          <button
+            className={styles.toolbarMenuButton}
+            type="button"
+            onClick={openToolbarMenu}
+            aria-label="Open more actions"
+            aria-expanded={isToolbarMenuOpen}
+          >
+            <span className={styles.toolbarMenuDots}>...</span>
+          </button>
+          {isToolbarMenuOpen ? (
+            <div className={styles.toolbarPopover} aria-label="More actions options">
+              <div className={styles.toolbarActionMenu}>
+                <button
+                  className={styles.toolbarActionButton}
+                  type="button"
+                  onClick={organizeTasks}
+                  disabled={tasks.length <= 1}
+                  aria-label="Organize tasks"
+                >
+                  Organize
+                </button>
+                <button
+                  className={styles.toolbarActionButton}
+                  type="button"
+                  onClick={clearTasks}
+                  disabled={tasks.length === 0}
+                  aria-label="Clear all tasks"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </>
+  );
+}
