@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { attachTaskToParent, createBlankTask, layoutChildTasks, moveTask } from "./taskModel.ts";
+import {
+  attachTaskToParent,
+  createBlankTask,
+  detachTaskFromParent,
+  layoutChildTasks,
+  moveTask,
+} from "./taskModel.ts";
 
 test("creates a blank task label near the center of the board", () => {
   const task = createBlankTask(2);
@@ -39,6 +45,21 @@ test("does not attach a task to itself", () => {
   assert.equal(attached.parentId, undefined);
   assert.equal(attached.xPercent, 50);
   assert.equal(attached.yPercent, 50);
+});
+
+test("detaches a child task without moving it", () => {
+  const child = {
+    ...createBlankTask(2),
+    parentId: "task-1",
+    xPercent: 65,
+    yPercent: 58,
+  };
+
+  const detached = detachTaskFromParent(child);
+
+  assert.equal(detached.parentId, undefined);
+  assert.equal(detached.xPercent, 65);
+  assert.equal(detached.yPercent, 58);
 });
 
 test("lays out multiple child tasks in a vertical stack after the parent", () => {

@@ -38,6 +38,12 @@ export function attachTaskToParent(task: LocalTask, parent: LocalTask): LocalTas
   };
 }
 
+export function detachTaskFromParent(task: LocalTask): LocalTask {
+  const detachedTask = { ...task };
+  delete detachedTask.parentId;
+  return detachedTask;
+}
+
 export function layoutChildTasks(tasks: LocalTask[], parentId: string): LocalTask[] {
   const parent = tasks.find((task) => task.id === parentId);
   if (!parent) return tasks;

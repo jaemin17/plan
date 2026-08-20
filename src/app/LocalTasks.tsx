@@ -5,6 +5,7 @@ import styles from "./page.module.css";
 import {
   attachTaskToParent,
   createBlankTask,
+  detachTaskFromParent,
   layoutChildTasks,
   moveTask,
   type LocalTask,
@@ -180,7 +181,15 @@ export function LocalTasks() {
           Math.abs(draggedTask.yPercent - task.yPercent) <= 12,
       );
 
-      if (!parent) return currentTasks;
+      if (!parent) {
+        if (!draggedTask.parentId) return currentTasks;
+
+        const detachedTasks = currentTasks.map((task) =>
+          task.id === draggedTask.id ? detachTaskFromParent(task) : task,
+        );
+
+        return layoutChildTasks(detachedTasks, draggedTask.parentId);
+      }
 
       const attachedTasks = currentTasks.map((task) =>
         task.id === draggedTask.id ? attachTaskToParent(task, parent) : task,
