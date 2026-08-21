@@ -11,6 +11,11 @@ function cssRule(selector) {
   return match?.groups?.body ?? "";
 }
 
+function zIndex(selector) {
+  const match = cssRule(selector).match(/z-index:\s*(?<value>\d+);/);
+  return match?.groups?.value ? Number(match.groups.value) : null;
+}
+
 test("task editor supports long multi-line text without clipping the task label", () => {
   const taskTagRule = cssRule(".taskTag");
   const childTaskTagRule = cssRule(".childTaskTag");
@@ -59,6 +64,10 @@ test("task labels render above the trash layer", () => {
   assert.doesNotMatch(componentSource, /taskTagDragging/);
   assert.match(taskTagRule, /z-index:\s*40;/);
   assert.match(trashZoneRule, /z-index:\s*1;/);
+});
+
+test("new task toolbar renders above task labels", () => {
+  assert.ok(zIndex(".taskToolbar") > zIndex(".taskTag"));
 });
 
 test("trash deletion uses task rectangle contact instead of pointer position", () => {
