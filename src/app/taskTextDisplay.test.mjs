@@ -44,3 +44,10 @@ test("task hierarchy changes schedule measured child layout without waiting for 
     /scheduleMeasuredChildRelayout\(\);/,
   );
 });
+
+test("dragging can start from task text after a small movement threshold", () => {
+  assert.match(componentSource, /TASK_DRAG_START_DISTANCE_PX/);
+  assert.match(componentSource, /hasStarted:\s*!startsOnText/);
+  assert.match(componentSource, /dragDistance\s*<\s*TASK_DRAG_START_DISTANCE_PX/);
+  assert.doesNotMatch(componentSource, /event\.target instanceof HTMLTextAreaElement\) return;/);
+});

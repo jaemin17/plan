@@ -21,7 +21,12 @@ type DragState = {
   offsetYPercent: number;
   lastXPercent: number;
   lastYPercent: number;
+  startClientX: number;
+  startClientY: number;
+  hasStarted: boolean;
 };
+
+const TASK_DRAG_START_DISTANCE_PX = 5;
 
 export function LocalTasks() {
   const [tasks, setTasks] = useState<LocalTask[]>([]);
@@ -285,11 +290,10 @@ export function LocalTasks() {
   }
 
   function startDraggingTask(task: LocalTask, event: PointerEvent<HTMLDivElement>) {
-    if (event.target instanceof HTMLTextAreaElement) return;
-
     const point = pointerPercent(event);
     if (!point) return;
 
+    const startsOnText = event.target instanceof HTMLTextAreaElement;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragStateRef.current = {
       taskId: task.id,
@@ -297,10 +301,16 @@ export function LocalTasks() {
       offsetYPercent: point.yPercent - task.yPercent,
       lastXPercent: task.xPercent,
       lastYPercent: task.yPercent,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      hasStarted: !startsOnText,
     };
-    setEditingTaskId(null);
-    setDraggingTaskId(task.id);
-    setIsOverTrash(isPointerOverTrash(event));
+
+    if (!startsOnText) {
+      setEditingTaskId(null);
+      setDraggingTaskId(task.id);
+      setIsOverTrash(isPointerOverTrash(event));
+    }
   }
 
   function dragTask(event: PointerEvent<HTMLDivElement>) {
@@ -309,6 +319,18 @@ export function LocalTasks() {
 
     const point = pointerPercent(event);
     if (!point) return;
+
+    if (!dragState.hasStarted) {
+      const dragDistance = Math.hypot(
+        event.clientX - dragState.startClientX,
+        event.clientY - dragState.startClientY,
+      );
+      if (dragDistance < TASK_DRAG_START_DISTANCE_PX) return;
+
+      dragState.hasStarted = true;
+      setEditingTaskId(null);
+      setDraggingTaskId(dragState.taskId);
+    }
 
     const nextX = point.xPercent - dragState.offsetXPercent;
     const nextY = point.yPercent - dragState.offsetYPercent;
@@ -338,6 +360,14 @@ export function LocalTasks() {
   function stopDraggingTask(event: PointerEvent<HTMLDivElement>) {
     const dragState = dragStateRef.current;
     if (!dragState) return;
+
+    if (!dragState.hasStarted) {
+      dragStateRef.current = null;
+      setDraggingTaskId(null);
+      setIsOverTrash(false);
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      return;
+    }
 
     if (isPointerOverTrash(event)) {
       setTasks((currentTasks) => deleteTask(currentTasks, dragState.taskId, boardSize()));
