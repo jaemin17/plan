@@ -20,6 +20,7 @@ const CHILD_TASK_Y_OFFSET_MIN_PX = 64;
 const CHILD_TASK_Y_OFFSET_MAX_PX = 68;
 const CHILD_TASK_Y_GAP_MIN_PX = 64;
 const CHILD_TASK_Y_GAP_MAX_PX = 68;
+const CHILD_TASK_PARENT_GAP_PX = -40;
 
 export function createBlankTask(index: number): LocalTask {
   return {
@@ -77,6 +78,23 @@ function childYGapPercent(boardSize?: BoardSize) {
     CHILD_TASK_Y_GAP_MIN_PX,
     CHILD_TASK_Y_GAP_MAX_PX,
   );
+}
+
+export function childXPercentAfterParentEdge(
+  parent: LocalTask,
+  parentWidthPixels: number,
+  boardSize: BoardSize,
+): number {
+  if (boardSize.width <= 0 || parentWidthPixels <= 0) {
+    return clampPercent(parent.xPercent + childXOffsetPercent(boardSize));
+  }
+
+  const parentAnchorPixels = (parent.xPercent / 100) * boardSize.width;
+  const parentRightPixels = parent.parentId
+    ? parentAnchorPixels + parentWidthPixels
+    : parentAnchorPixels + parentWidthPixels / 2;
+  const childLeftPixels = parentRightPixels + CHILD_TASK_PARENT_GAP_PX;
+  return clampPercent((childLeftPixels / boardSize.width) * 100);
 }
 
 export function moveTask(task: LocalTask, xPercent: number, yPercent: number): LocalTask {

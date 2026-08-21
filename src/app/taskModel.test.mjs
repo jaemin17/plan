@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   attachTaskToParent,
+  childXPercentAfterParentEdge,
   createBlankTask,
   deleteTask,
   detachTaskFromParent,
@@ -108,6 +109,21 @@ test("clamps child task spacing to pixel bounds when board size is known", () =>
       { id: "task-3", parentId: "task-1", xPercent: 44.4, yPercent: 50.5 },
     ],
   );
+});
+
+test("places a child task a fixed gap after the measured parent right edge", () => {
+  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
+  const boardSize = { width: 1000, height: 800 };
+
+  assert.ok(Math.abs(childXPercentAfterParentEdge(parent, 200, boardSize) - 46) < 0.001);
+  assert.ok(Math.abs(childXPercentAfterParentEdge(parent, 320, boardSize) - 52) < 0.001);
+});
+
+test("places a grandchild after a left-anchored child task edge", () => {
+  const childParent = { ...createBlankTask(2), parentId: "task-1", xPercent: 40, yPercent: 50 };
+  const boardSize = { width: 1000, height: 800 };
+
+  assert.ok(Math.abs(childXPercentAfterParentEdge(childParent, 200, boardSize) - 56) < 0.001);
 });
 
 test("deletes a child task and relayouts the remaining siblings", () => {

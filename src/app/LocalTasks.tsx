@@ -4,6 +4,7 @@ import { ChangeEvent, PointerEvent, useEffect, useRef, useState } from "react";
 import styles from "./page.module.css";
 import {
   attachTaskToParent,
+  childXPercentAfterParentEdge,
   createBlankTask,
   detachTaskFromParent,
   deleteTask,
@@ -31,10 +32,12 @@ export function LocalTasks() {
   const [isOverTrash, setIsOverTrash] = useState(false);
   const [isToolbarMenuOpen, setIsToolbarMenuOpen] = useState(false);
   const toolbarCloseTimeoutRef = useRef<number | null>(null);
-  const editingInputRef = useRef<HTMLInputElement | null>(null);
+  const editingInputRef = useRef<HTMLTextAreaElement | null>(null);
   const taskLayerRef = useRef<HTMLDivElement | null>(null);
+  const taskRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const trashRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
+  const measuredRelayoutFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -61,6 +64,48 @@ export function LocalTasks() {
     window.addEventListener("resize", relayoutStoredChildren);
     return () => window.removeEventListener("resize", relayoutStoredChildren);
   }, [draggingTaskId, hasLoadedStoredTasks]);
+
+  useEffect(() => {
+    if (!hasLoadedStoredTasks || draggingTaskId) return;
+
+    function scheduleMeasuredChildRelayout() {
+      if (measuredRelayoutFrameRef.current !== null) return;
+
+      measuredRelayoutFrameRef.current = window.requestAnimationFrame(() => {
+        measuredRelayoutFrameRef.current = null;
+        const size = boardSize();
+        if (!size) return;
+
+        setTasks((currentTasks) => {
+          const nextTasks = layoutMeasuredChildTasks(currentTasks, size);
+          return areTaskLayoutsEqual(currentTasks, nextTasks) ? currentTasks : nextTasks;
+        });
+      });
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      scheduleMeasuredChildRelayout();
+    });
+
+    const layer = taskLayerRef.current;
+    if (layer) {
+      resizeObserver.observe(layer);
+    }
+
+    taskRefs.current.forEach((taskElement) => {
+      resizeObserver.observe(taskElement);
+    });
+
+    scheduleMeasuredChildRelayout();
+
+    return () => {
+      resizeObserver.disconnect();
+      if (measuredRelayoutFrameRef.current !== null) {
+        window.cancelAnimationFrame(measuredRelayoutFrameRef.current);
+        measuredRelayoutFrameRef.current = null;
+      }
+    };
+  }, [draggingTaskId, hasLoadedStoredTasks, tasks]);
 
   useEffect(() => {
     if (!editingTaskId) return;
@@ -96,7 +141,7 @@ export function LocalTasks() {
     setEditingTaskId(task.id);
   }
 
-  function updateTaskText(taskId: string, event: ChangeEvent<HTMLInputElement>) {
+  function updateTaskText(taskId: string, event: ChangeEvent<HTMLTextAreaElement>) {
     const text = event.target.value;
     setTasks((currentTasks) =>
       currentTasks.map((task) => (task.id === taskId ? { ...task, text } : task)),
@@ -119,6 +164,85 @@ export function LocalTasks() {
     setTasks([]);
     setEditingTaskId(null);
     setIsToolbarMenuOpen(false);
+  }
+
+  function setTaskRef(taskId: string, element: HTMLDivElement | null) {
+    if (element) {
+      taskRefs.current.set(taskId, element);
+      return;
+    }
+
+    taskRefs.current.delete(taskId);
+  }
+
+  function areTaskLayoutsEqual(firstTasks: LocalTask[], secondTasks: LocalTask[]) {
+    if (firstTasks.length !== secondTasks.length) return false;
+
+    return firstTasks.every((firstTask, index) => {
+      const secondTask = secondTasks[index];
+      return (
+        secondTask &&
+        firstTask.id === secondTask.id &&
+        firstTask.text === secondTask.text &&
+        firstTask.parentId === secondTask.parentId &&
+        Math.abs(firstTask.xPercent - secondTask.xPercent) < 0.01 &&
+        Math.abs(firstTask.yPercent - secondTask.yPercent) < 0.01
+      );
+    });
+  }
+
+  function isTaskDescendantOf(task: LocalTask, ancestorId: string, currentTasks: LocalTask[]) {
+    let parentId = task.parentId;
+
+    while (parentId) {
+      if (parentId === ancestorId) return true;
+
+      const parentTask = currentTasks.find((candidateTask) => candidateTask.id === parentId);
+      parentId = parentTask?.parentId;
+    }
+
+    return false;
+  }
+
+  function layoutMeasuredChildTasks(currentTasks: LocalTask[], size: { width: number; height: number }) {
+    const verticallyLaidOutTasks = layoutAllChildTasks(currentTasks, size);
+    const measuredTasksById = new Map<string, LocalTask>();
+    const taskWidthsById = new Map<string, number>();
+
+    verticallyLaidOutTasks.forEach((task) => {
+      const taskElement = taskRefs.current.get(task.id);
+      if (taskElement) {
+        taskWidthsById.set(task.id, taskElement.getBoundingClientRect().width);
+      }
+    });
+
+    function measuredTask(task: LocalTask): LocalTask {
+      const existingTask = measuredTasksById.get(task.id);
+      if (existingTask) return existingTask;
+
+      if (!task.parentId) {
+        measuredTasksById.set(task.id, task);
+        return task;
+      }
+
+      const parent = verticallyLaidOutTasks.find(
+        (candidateTask) => candidateTask.id === task.parentId,
+      );
+      const parentWidthPixels = parent ? taskWidthsById.get(parent.id) : undefined;
+      if (!parent || !parentWidthPixels) {
+        measuredTasksById.set(task.id, task);
+        return task;
+      }
+
+      const nextTask = {
+        ...task,
+        xPercent: childXPercentAfterParentEdge(measuredTask(parent), parentWidthPixels, size),
+      };
+      measuredTasksById.set(task.id, nextTask);
+      return nextTask;
+    }
+
+    return verticallyLaidOutTasks.map(measuredTask);
   }
 
   function pointerPercent(event: PointerEvent<HTMLElement>) {
@@ -161,7 +285,7 @@ export function LocalTasks() {
   }
 
   function startDraggingTask(task: LocalTask, event: PointerEvent<HTMLDivElement>) {
-    if (event.target instanceof HTMLInputElement) return;
+    if (event.target instanceof HTMLTextAreaElement) return;
 
     const point = pointerPercent(event);
     if (!point) return;
@@ -198,7 +322,7 @@ export function LocalTasks() {
           return moveTask(task, nextX, nextY);
         }
 
-        if (task.parentId === dragState.taskId) {
+        if (isTaskDescendantOf(task, dragState.taskId, currentTasks)) {
           return moveTask(task, task.xPercent + deltaX, task.yPercent + deltaY);
         }
 
@@ -231,6 +355,7 @@ export function LocalTasks() {
       const parent = currentTasks.find(
         (task) =>
           task.id !== draggedTask.id &&
+          !isTaskDescendantOf(task, draggedTask.id, currentTasks) &&
           draggedTask.xPercent >= task.xPercent + 6 &&
           draggedTask.xPercent <= task.xPercent + 24 &&
           Math.abs(draggedTask.yPercent - task.yPercent) <= 12,
@@ -264,6 +389,7 @@ export function LocalTasks() {
       <div ref={taskLayerRef} className={styles.taskLayer} aria-label="任务标签">
         {tasks.map((task) => (
           <div
+            ref={(element) => setTaskRef(task.id, element)}
             className={`${styles.taskTag} ${task.parentId ? styles.childTaskTag : ""}`}
             key={task.id}
             onPointerDown={(event) => startDraggingTask(task, event)}
@@ -276,7 +402,7 @@ export function LocalTasks() {
             }}
           >
             <span className={styles.taskDragGrip} aria-hidden="true" />
-            <input
+            <textarea
               ref={editingTaskId === task.id ? editingInputRef : null}
               className={styles.taskInput}
               value={task.text}
@@ -285,6 +411,7 @@ export function LocalTasks() {
               onBlur={() => setEditingTaskId(null)}
               aria-label="Edit task"
               placeholder="New task"
+              rows={1}
             />
           </div>
         ))}
