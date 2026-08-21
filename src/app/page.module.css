@@ -111,6 +111,7 @@
 
 .taskTag {
   position: absolute;
+  z-index: 40;
   display: inline-flex;
   align-items: center;
   gap: 9px;

@@ -51,3 +51,23 @@ test("dragging can start from task text after a small movement threshold", () =>
   assert.match(componentSource, /dragDistance\s*<\s*TASK_DRAG_START_DISTANCE_PX/);
   assert.doesNotMatch(componentSource, /event\.target instanceof HTMLTextAreaElement\) return;/);
 });
+
+test("task labels render above the trash layer", () => {
+  const taskTagRule = cssRule(".taskTag");
+  const trashZoneRule = cssRule(".trashZone");
+
+  assert.doesNotMatch(componentSource, /taskTagDragging/);
+  assert.match(taskTagRule, /z-index:\s*40;/);
+  assert.match(trashZoneRule, /z-index:\s*1;/);
+});
+
+test("trash deletion uses task rectangle contact instead of pointer position", () => {
+  assert.match(componentSource, /function isTaskTouchingTrash/);
+  assert.match(componentSource, /taskElement\.getBoundingClientRect\(\)/);
+  assert.match(componentSource, /taskRect\.right >= trashRect\.left/);
+  assert.match(componentSource, /taskRect\.left <= trashRect\.right/);
+  assert.match(componentSource, /taskRect\.bottom >= trashRect\.top/);
+  assert.match(componentSource, /taskRect\.top <= trashRect\.bottom/);
+  assert.match(componentSource, /setIsOverTrash\(isTaskTouchingTrash\(dragState\.taskId\)\)/);
+  assert.match(componentSource, /if \(isTaskTouchingTrash\(dragState\.taskId\)\)/);
+});

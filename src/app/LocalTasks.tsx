@@ -276,16 +276,18 @@ export function LocalTasks() {
     };
   }
 
-  function isPointerOverTrash(event: PointerEvent<HTMLElement>) {
+  function isTaskTouchingTrash(taskId: string) {
+    const taskElement = taskRefs.current.get(taskId);
     const trash = trashRef.current;
-    if (!trash) return false;
+    if (!taskElement || !trash) return false;
 
-    const rect = trash.getBoundingClientRect();
+    const taskRect = taskElement.getBoundingClientRect();
+    const trashRect = trash.getBoundingClientRect();
     return (
-      event.clientX >= rect.left &&
-      event.clientX <= rect.right &&
-      event.clientY >= rect.top &&
-      event.clientY <= rect.bottom
+      taskRect.right >= trashRect.left &&
+      taskRect.left <= trashRect.right &&
+      taskRect.bottom >= trashRect.top &&
+      taskRect.top <= trashRect.bottom
     );
   }
 
@@ -309,7 +311,7 @@ export function LocalTasks() {
     if (!startsOnText) {
       setEditingTaskId(null);
       setDraggingTaskId(task.id);
-      setIsOverTrash(isPointerOverTrash(event));
+      setIsOverTrash(isTaskTouchingTrash(task.id));
     }
   }
 
@@ -336,7 +338,6 @@ export function LocalTasks() {
     const nextY = point.yPercent - dragState.offsetYPercent;
     const deltaX = nextX - dragState.lastXPercent;
     const deltaY = nextY - dragState.lastYPercent;
-    const nextIsOverTrash = isPointerOverTrash(event);
 
     setTasks((currentTasks) =>
       currentTasks.map((task) => {
@@ -354,7 +355,7 @@ export function LocalTasks() {
 
     dragState.lastXPercent = nextX;
     dragState.lastYPercent = nextY;
-    setIsOverTrash(nextIsOverTrash);
+    setIsOverTrash(isTaskTouchingTrash(dragState.taskId));
   }
 
   function stopDraggingTask(event: PointerEvent<HTMLDivElement>) {
@@ -369,7 +370,7 @@ export function LocalTasks() {
       return;
     }
 
-    if (isPointerOverTrash(event)) {
+    if (isTaskTouchingTrash(dragState.taskId)) {
       setTasks((currentTasks) => deleteTask(currentTasks, dragState.taskId, boardSize()));
       dragStateRef.current = null;
       setDraggingTaskId(null);
@@ -420,7 +421,12 @@ export function LocalTasks() {
         {tasks.map((task) => (
           <div
             ref={(element) => setTaskRef(task.id, element)}
-            className={`${styles.taskTag} ${task.parentId ? styles.childTaskTag : ""}`}
+            className={[
+              styles.taskTag,
+              task.parentId ? styles.childTaskTag : "",
+            ]
+              .filter(Boolean)
+              .join(" ")}
             key={task.id}
             onPointerDown={(event) => startDraggingTask(task, event)}
             onPointerMove={dragTask}
