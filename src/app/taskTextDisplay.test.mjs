@@ -19,8 +19,8 @@ test("task editor supports long multi-line text without clipping the task label"
   assert.match(componentSource, /<textarea\s/);
   assert.doesNotMatch(componentSource, /<input\s/);
   assert.match(taskTagRule, /align-items:\s*center;/);
-  assert.match(taskTagRule, /transform:\s*translate\(-50%, -50%\);/);
-  assert.match(childTaskTagRule, /transform:\s*translateY\(-50%\);/);
+  assert.doesNotMatch(taskTagRule, /transform:/);
+  assert.doesNotMatch(childTaskTagRule, /transform:/);
   assert.match(taskTagRule, /max-height:\s*180px;/);
   assert.match(taskTagRule, /overflow:\s*visible;/);
   assert.match(taskInputRule, /max-height:\s*calc\(180px - 10px\);/);
@@ -73,9 +73,10 @@ test("trash deletion uses task rectangle contact instead of pointer position", (
 });
 
 test("first child task uses its parent height while later children keep natural height", () => {
-  assert.match(componentSource, /function firstChildParentHeightPx/);
-  assert.match(componentSource, /taskRefs\.current\.get\(task\.parentId\)/);
-  assert.match(componentSource, /currentTasks\.find\(\(candidateTask\) => candidateTask\.parentId === task\.parentId\)/);
+  assert.match(componentSource, /function measuredFirstChildHeights/);
+  assert.match(componentSource, /const \[firstChildHeights, setFirstChildHeights\]/);
+  assert.match(componentSource, /taskElements\.get\(task\.parentId\)/);
+  assert.match(componentSource, /candidateTask\) => candidateTask\.parentId === task\.parentId/);
   assert.match(componentSource, /minHeight:\s*firstChildParentHeight \? `\$\{firstChildParentHeight\}px` : undefined/);
 });
 

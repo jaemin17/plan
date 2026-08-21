@@ -1,10 +1,15 @@
 "use client";
 
-import { ChangeEvent, PointerEvent, useEffect, useRef, useState } from "react";
+import { ChangeEvent, PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./page.module.css";
 import {
+  CANVAS_GRID_SIZE_PX,
+  INITIAL_CANVAS_COLS,
+  INITIAL_CANVAS_ROWS,
+  TASK_HEIGHT_PX,
+  TASK_WIDTH_PX,
   attachTaskToParent,
-  childXPercentAfterParentEdge,
+  childColAfterParentEdge,
   createBlankTask,
   detachTaskFromParent,
   deleteTask,
@@ -17,13 +22,18 @@ import { readStoredTasks, writeStoredTasks } from "./taskStorage";
 
 type DragState = {
   taskId: string;
-  offsetXPercent: number;
-  offsetYPercent: number;
-  lastXPercent: number;
-  lastYPercent: number;
+  offsetCol: number;
+  offsetRow: number;
+  lastCol: number;
+  lastRow: number;
   startClientX: number;
   startClientY: number;
   hasStarted: boolean;
+};
+
+type ViewportSize = {
+  width: number;
+  height: number;
 };
 
 const TASK_DRAG_START_DISTANCE_PX = 5;
@@ -31,6 +41,127 @@ const TASK_DROP_PARENT_MIN_GAP_PX = -24;
 const TASK_DROP_PARENT_MAX_GAP_PX = 220;
 const TASK_DROP_PARENT_PREFERRED_GAP_PX = 38;
 const TASK_DROP_PARENT_VERTICAL_SLOP_PX = 36;
+const CANVAS_EXTRA_COLS = 10;
+const CANVAS_EXTRA_ROWS = 8;
+const PAGE_HORIZONTAL_PADDING_PX = 48;
+const PAGE_VERTICAL_PADDING_PX = 96;
+
+function canvasSize(tasks: LocalTask[], viewportSize: ViewportSize) {
+  const visibleCols = Math.ceil(
+    Math.max(0, viewportSize.width - PAGE_HORIZONTAL_PADDING_PX) / CANVAS_GRID_SIZE_PX,
+  );
+  const visibleRows = Math.ceil(
+    Math.max(0, viewportSize.height - PAGE_VERTICAL_PADDING_PX) / CANVAS_GRID_SIZE_PX,
+  );
+  const taskCols = Math.ceil(TASK_WIDTH_PX / CANVAS_GRID_SIZE_PX);
+  const taskRows = Math.ceil(TASK_HEIGHT_PX / CANVAS_GRID_SIZE_PX);
+  const contentCols = tasks.reduce(
+    (cols, task) => Math.max(cols, task.col + taskCols + CANVAS_EXTRA_COLS),
+    INITIAL_CANVAS_COLS,
+  );
+  const contentRows = tasks.reduce(
+    (rows, task) => Math.max(rows, task.row + taskRows + CANVAS_EXTRA_ROWS),
+    INITIAL_CANVAS_ROWS,
+  );
+  const cols = Math.max(INITIAL_CANVAS_COLS, visibleCols, contentCols);
+  const rows = Math.max(INITIAL_CANVAS_ROWS, visibleRows, contentRows);
+
+  return {
+    cols,
+    rows,
+    width: cols * CANVAS_GRID_SIZE_PX,
+    height: rows * CANVAS_GRID_SIZE_PX,
+  };
+}
+
+function areTaskLayoutsEqual(firstTasks: LocalTask[], secondTasks: LocalTask[]) {
+  if (firstTasks.length !== secondTasks.length) return false;
+
+  return firstTasks.every((firstTask, index) => {
+    const secondTask = secondTasks[index];
+    return (
+      secondTask &&
+      firstTask.id === secondTask.id &&
+      firstTask.text === secondTask.text &&
+      firstTask.parentId === secondTask.parentId &&
+      firstTask.col === secondTask.col &&
+      firstTask.row === secondTask.row
+    );
+  });
+}
+
+function areNumberRecordsEqual(first: Record<string, number>, second: Record<string, number>) {
+  const firstKeys = Object.keys(first);
+  const secondKeys = Object.keys(second);
+  if (firstKeys.length !== secondKeys.length) return false;
+
+  return firstKeys.every((key) => first[key] === second[key]);
+}
+
+function layoutMeasuredChildTasks(
+  currentTasks: LocalTask[],
+  taskElements: Map<string, HTMLDivElement>,
+) {
+  const verticallyLaidOutTasks = layoutAllChildTasks(currentTasks);
+  const measuredTasksById = new Map<string, LocalTask>();
+  const taskWidthsById = new Map<string, number>();
+
+  verticallyLaidOutTasks.forEach((task) => {
+    const taskElement = taskElements.get(task.id);
+    if (taskElement) {
+      taskWidthsById.set(task.id, taskElement.getBoundingClientRect().width);
+    }
+  });
+
+  function measuredTask(task: LocalTask): LocalTask {
+    const existingTask = measuredTasksById.get(task.id);
+    if (existingTask) return existingTask;
+
+    if (!task.parentId) {
+      measuredTasksById.set(task.id, task);
+      return task;
+    }
+
+    const parent = verticallyLaidOutTasks.find(
+      (candidateTask) => candidateTask.id === task.parentId,
+    );
+    const parentWidthPixels = parent ? taskWidthsById.get(parent.id) : undefined;
+    if (!parent || !parentWidthPixels) {
+      measuredTasksById.set(task.id, task);
+      return task;
+    }
+
+    const nextTask = {
+      ...task,
+      col: childColAfterParentEdge(measuredTask(parent), parentWidthPixels),
+    };
+    measuredTasksById.set(task.id, nextTask);
+    return nextTask;
+  }
+
+  return verticallyLaidOutTasks.map(measuredTask);
+}
+
+function measuredFirstChildHeights(
+  currentTasks: LocalTask[],
+  taskElements: Map<string, HTMLDivElement>,
+) {
+  const heights: Record<string, number> = {};
+
+  currentTasks.forEach((task) => {
+    if (!task.parentId) return;
+
+    const firstChild = currentTasks.find(
+      (candidateTask) => candidateTask.parentId === task.parentId,
+    );
+    if (firstChild?.id !== task.id) return;
+
+    const parentHeight = taskElements.get(task.parentId)?.getBoundingClientRect().height;
+    if (parentHeight) heights[task.id] = parentHeight;
+  });
+
+  return heights;
+}
 
 export function LocalTasks() {
   const [tasks, setTasks] = useState<LocalTask[]>([]);
@@ -40,6 +171,8 @@ export function LocalTasks() {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const [isOverTrash, setIsOverTrash] = useState(false);
   const [isToolbarMenuOpen, setIsToolbarMenuOpen] = useState(false);
+  const [viewportSize, setViewportSize] = useState<ViewportSize>({ width: 0, height: 0 });
+  const [firstChildHeights, setFirstChildHeights] = useState<Record<string, number>>({});
   const toolbarCloseTimeoutRef = useRef<number | null>(null);
   const editingInputRef = useRef<HTMLTextAreaElement | null>(null);
   const taskLayerRef = useRef<HTMLDivElement | null>(null);
@@ -47,15 +180,37 @@ export function LocalTasks() {
   const trashRef = useRef<HTMLDivElement | null>(null);
   const dragStateRef = useRef<DragState | null>(null);
   const measuredRelayoutFrameRef = useRef<number | null>(null);
+  const canvasMetrics = useMemo(() => canvasSize(tasks, viewportSize), [tasks, viewportSize]);
 
   useEffect(() => {
+    function measureViewport() {
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight });
+    }
+
+    measureViewport();
+    window.addEventListener("resize", measureViewport);
+    return () => window.removeEventListener("resize", measureViewport);
+  }, []);
+
+  useEffect(() => {
+    if (hasLoadedStoredTasks || viewportSize.width === 0 || viewportSize.height === 0) return;
+
     queueMicrotask(() => {
-      const storedTasks = readStoredTasks(boardSize());
+      const storedTasks = readStoredTasks({
+        width: canvasMetrics.width,
+        height: canvasMetrics.height,
+      });
       setTasks(storedTasks);
       setNextTaskIndex(storedTasks.length + 1);
       setHasLoadedStoredTasks(true);
     });
-  }, []);
+  }, [
+    canvasMetrics.height,
+    canvasMetrics.width,
+    hasLoadedStoredTasks,
+    viewportSize.height,
+    viewportSize.width,
+  ]);
 
   useEffect(() => {
     if (!hasLoadedStoredTasks) return;
@@ -67,7 +222,7 @@ export function LocalTasks() {
     if (!hasLoadedStoredTasks || draggingTaskId) return;
 
     function relayoutStoredChildren() {
-      setTasks((currentTasks) => layoutAllChildTasks(currentTasks, boardSize()));
+      setTasks((currentTasks) => layoutAllChildTasks(currentTasks));
     }
 
     window.addEventListener("resize", relayoutStoredChildren);
@@ -82,12 +237,15 @@ export function LocalTasks() {
 
       measuredRelayoutFrameRef.current = window.requestAnimationFrame(() => {
         measuredRelayoutFrameRef.current = null;
-        const size = boardSize();
-        if (!size) return;
+        const taskElements = taskRefs.current;
 
         setTasks((currentTasks) => {
-          const nextTasks = layoutMeasuredChildTasks(currentTasks, size);
+          const nextTasks = layoutMeasuredChildTasks(currentTasks, taskElements);
           return areTaskLayoutsEqual(currentTasks, nextTasks) ? currentTasks : nextTasks;
+        });
+        setFirstChildHeights((currentHeights) => {
+          const nextHeights = measuredFirstChildHeights(tasks, taskElements);
+          return areNumberRecordsEqual(currentHeights, nextHeights) ? currentHeights : nextHeights;
         });
       });
     }
@@ -114,7 +272,7 @@ export function LocalTasks() {
         measuredRelayoutFrameRef.current = null;
       }
     };
-  }, [draggingTaskId, hasLoadedStoredTasks, tasks]);
+  }, [canvasMetrics.height, canvasMetrics.width, draggingTaskId, hasLoadedStoredTasks, tasks]);
 
   useEffect(() => {
     if (!editingTaskId) return;
@@ -162,8 +320,8 @@ export function LocalTasks() {
       currentTasks.map((task, index) => ({
         ...task,
         parentId: undefined,
-        xPercent: 50,
-        yPercent: 50 + index * 6,
+        col: Math.floor(INITIAL_CANVAS_COLS / 2),
+        row: Math.floor(INITIAL_CANVAS_ROWS / 2) + index * 2,
       })),
     );
     setIsToolbarMenuOpen(false);
@@ -182,22 +340,6 @@ export function LocalTasks() {
     }
 
     taskRefs.current.delete(taskId);
-  }
-
-  function areTaskLayoutsEqual(firstTasks: LocalTask[], secondTasks: LocalTask[]) {
-    if (firstTasks.length !== secondTasks.length) return false;
-
-    return firstTasks.every((firstTask, index) => {
-      const secondTask = secondTasks[index];
-      return (
-        secondTask &&
-        firstTask.id === secondTask.id &&
-        firstTask.text === secondTask.text &&
-        firstTask.parentId === secondTask.parentId &&
-        Math.abs(firstTask.xPercent - secondTask.xPercent) < 0.01 &&
-        Math.abs(firstTask.yPercent - secondTask.yPercent) < 0.01
-      );
-    });
   }
 
   function isTaskDescendantOf(task: LocalTask, ancestorId: string, currentTasks: LocalTask[]) {
@@ -285,57 +427,7 @@ export function LocalTasks() {
       )[0]?.task;
   }
 
-  function firstChildParentHeightPx(task: LocalTask, currentTasks: LocalTask[]) {
-    if (!task.parentId) return undefined;
-
-    const firstChild = currentTasks.find((candidateTask) => candidateTask.parentId === task.parentId);
-    if (firstChild?.id !== task.id) return undefined;
-
-    return taskRefs.current.get(task.parentId)?.getBoundingClientRect().height;
-  }
-
-  function layoutMeasuredChildTasks(currentTasks: LocalTask[], size: { width: number; height: number }) {
-    const verticallyLaidOutTasks = layoutAllChildTasks(currentTasks, size);
-    const measuredTasksById = new Map<string, LocalTask>();
-    const taskWidthsById = new Map<string, number>();
-
-    verticallyLaidOutTasks.forEach((task) => {
-      const taskElement = taskRefs.current.get(task.id);
-      if (taskElement) {
-        taskWidthsById.set(task.id, taskElement.getBoundingClientRect().width);
-      }
-    });
-
-    function measuredTask(task: LocalTask): LocalTask {
-      const existingTask = measuredTasksById.get(task.id);
-      if (existingTask) return existingTask;
-
-      if (!task.parentId) {
-        measuredTasksById.set(task.id, task);
-        return task;
-      }
-
-      const parent = verticallyLaidOutTasks.find(
-        (candidateTask) => candidateTask.id === task.parentId,
-      );
-      const parentWidthPixels = parent ? taskWidthsById.get(parent.id) : undefined;
-      if (!parent || !parentWidthPixels) {
-        measuredTasksById.set(task.id, task);
-        return task;
-      }
-
-      const nextTask = {
-        ...task,
-        xPercent: childXPercentAfterParentEdge(measuredTask(parent), parentWidthPixels, size),
-      };
-      measuredTasksById.set(task.id, nextTask);
-      return nextTask;
-    }
-
-    return verticallyLaidOutTasks.map(measuredTask);
-  }
-
-  function pointerPercent(event: PointerEvent<HTMLElement>) {
+  function pointerGrid(event: PointerEvent<HTMLElement>) {
     const layer = taskLayerRef.current;
     if (!layer) return null;
 
@@ -343,21 +435,8 @@ export function LocalTasks() {
     if (rect.width === 0 || rect.height === 0) return null;
 
     return {
-      xPercent: ((event.clientX - rect.left) / rect.width) * 100,
-      yPercent: ((event.clientY - rect.top) / rect.height) * 100,
-    };
-  }
-
-  function boardSize() {
-    const layer = taskLayerRef.current;
-    if (!layer) return undefined;
-
-    const rect = layer.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return undefined;
-
-    return {
-      width: rect.width,
-      height: rect.height,
+      col: (event.clientX - rect.left) / CANVAS_GRID_SIZE_PX,
+      row: (event.clientY - rect.top) / CANVAS_GRID_SIZE_PX,
     };
   }
 
@@ -377,17 +456,17 @@ export function LocalTasks() {
   }
 
   function startDraggingTask(task: LocalTask, event: PointerEvent<HTMLDivElement>) {
-    const point = pointerPercent(event);
+    const point = pointerGrid(event);
     if (!point) return;
 
     const startsOnText = event.target instanceof HTMLTextAreaElement;
     event.currentTarget.setPointerCapture(event.pointerId);
     dragStateRef.current = {
       taskId: task.id,
-      offsetXPercent: point.xPercent - task.xPercent,
-      offsetYPercent: point.yPercent - task.yPercent,
-      lastXPercent: task.xPercent,
-      lastYPercent: task.yPercent,
+      offsetCol: point.col - task.col,
+      offsetRow: point.row - task.row,
+      lastCol: task.col,
+      lastRow: task.row,
       startClientX: event.clientX,
       startClientY: event.clientY,
       hasStarted: !startsOnText,
@@ -404,7 +483,7 @@ export function LocalTasks() {
     const dragState = dragStateRef.current;
     if (!dragState) return;
 
-    const point = pointerPercent(event);
+    const point = pointerGrid(event);
     if (!point) return;
 
     if (!dragState.hasStarted) {
@@ -419,27 +498,27 @@ export function LocalTasks() {
       setDraggingTaskId(dragState.taskId);
     }
 
-    const nextX = point.xPercent - dragState.offsetXPercent;
-    const nextY = point.yPercent - dragState.offsetYPercent;
-    const deltaX = nextX - dragState.lastXPercent;
-    const deltaY = nextY - dragState.lastYPercent;
+    const nextCol = point.col - dragState.offsetCol;
+    const nextRow = point.row - dragState.offsetRow;
+    const deltaCol = nextCol - dragState.lastCol;
+    const deltaRow = nextRow - dragState.lastRow;
 
     setTasks((currentTasks) =>
       currentTasks.map((task) => {
         if (task.id === dragState.taskId) {
-          return moveTask(task, nextX, nextY);
+          return moveTask(task, nextCol, nextRow);
         }
 
         if (isTaskDescendantOf(task, dragState.taskId, currentTasks)) {
-          return moveTask(task, task.xPercent + deltaX, task.yPercent + deltaY);
+          return moveTask(task, task.col + deltaCol, task.row + deltaRow);
         }
 
         return task;
       }),
     );
 
-    dragState.lastXPercent = nextX;
-    dragState.lastYPercent = nextY;
+    dragState.lastCol = nextCol;
+    dragState.lastRow = nextRow;
     setIsOverTrash(isTaskTouchingTrash(dragState.taskId));
   }
 
@@ -456,7 +535,7 @@ export function LocalTasks() {
     }
 
     if (isTaskTouchingTrash(dragState.taskId)) {
-      setTasks((currentTasks) => deleteTask(currentTasks, dragState.taskId, boardSize()));
+      setTasks((currentTasks) => deleteTask(currentTasks, dragState.taskId));
       dragStateRef.current = null;
       setDraggingTaskId(null);
       setIsOverTrash(false);
@@ -477,14 +556,14 @@ export function LocalTasks() {
           task.id === draggedTask.id ? detachTaskFromParent(task) : task,
         );
 
-        return layoutChildTasks(detachedTasks, draggedTask.parentId, boardSize());
+        return layoutChildTasks(detachedTasks, draggedTask.parentId);
       }
 
       const attachedTasks = currentTasks.map((task) =>
-        task.id === draggedTask.id ? attachTaskToParent(task, parent, boardSize()) : task,
+        task.id === draggedTask.id ? attachTaskToParent(task, parent) : task,
       );
 
-      return layoutChildTasks(attachedTasks, parent.id, boardSize());
+      return layoutChildTasks(attachedTasks, parent.id);
     });
 
     dragStateRef.current = null;
@@ -495,9 +574,14 @@ export function LocalTasks() {
 
   return (
     <>
-      <div ref={taskLayerRef} className={styles.taskLayer} aria-label="任务标签">
+      <div
+        ref={taskLayerRef}
+        className={styles.taskLayer}
+        style={{ width: `${canvasMetrics.width}px`, height: `${canvasMetrics.height}px` }}
+        aria-label="任务标签"
+      >
         {tasks.map((task) => {
-          const firstChildParentHeight = firstChildParentHeightPx(task, tasks);
+          const firstChildParentHeight = firstChildHeights[task.id];
 
           return (
             <div
@@ -511,9 +595,9 @@ export function LocalTasks() {
               onPointerUp={stopDraggingTask}
               onPointerCancel={stopDraggingTask}
               style={{
-                left: `${task.xPercent}%`,
+                left: `${task.col * CANVAS_GRID_SIZE_PX}px`,
                 minHeight: firstChildParentHeight ? `${firstChildParentHeight}px` : undefined,
-                top: `${task.yPercent}%`,
+                top: `${task.row * CANVAS_GRID_SIZE_PX}px`,
               }}
             >
               <span className={styles.taskDragGrip} aria-hidden="true" />

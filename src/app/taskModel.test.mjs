@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   attachTaskToParent,
-  childXPercentAfterParentEdge,
+  childColAfterParentEdge,
   createBlankTask,
   deleteTask,
   detachTaskFromParent,
@@ -15,28 +15,36 @@ test("creates a blank task label near the center of the board", () => {
 
   assert.equal(task.id, "task-2");
   assert.equal(task.text, "");
-  assert.equal(task.xPercent, 50);
-  assert.equal(task.yPercent, 50);
+  assert.equal(task.col, 8);
+  assert.equal(task.row, 6);
 });
 
-test("moves a task label while keeping it inside the board", () => {
+test("moves a task label while only clamping it away from negative coordinates", () => {
   const task = createBlankTask(1);
   const moved = moveTask(task, 72, -5);
 
   assert.equal(moved.id, task.id);
-  assert.equal(moved.xPercent, 72);
-  assert.equal(moved.yPercent, 4);
+  assert.equal(moved.col, 72);
+  assert.equal(moved.row, 0);
+});
+
+test("moves a task label beyond the current visible canvas", () => {
+  const task = createBlankTask(1);
+  const moved = moveTask(task, 44, 30);
+
+  assert.equal(moved.col, 44);
+  assert.equal(moved.row, 30);
 });
 
 test("attaches a task to a parent and places it after the parent", () => {
-  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
+  const parent = { ...createBlankTask(1), col: 12, row: 10 };
   const child = createBlankTask(2);
 
   const attached = attachTaskToParent(child, parent);
 
   assert.equal(attached.parentId, "task-1");
-  assert.equal(attached.xPercent, 54);
-  assert.equal(attached.yPercent, 42);
+  assert.equal(attached.col, 19);
+  assert.equal(attached.row, 10);
 });
 
 test("does not attach a task to itself", () => {
@@ -45,27 +53,27 @@ test("does not attach a task to itself", () => {
   const attached = attachTaskToParent(task, task);
 
   assert.equal(attached.parentId, undefined);
-  assert.equal(attached.xPercent, 50);
-  assert.equal(attached.yPercent, 50);
+  assert.equal(attached.col, 8);
+  assert.equal(attached.row, 6);
 });
 
 test("detaches a child task without moving it", () => {
   const child = {
     ...createBlankTask(2),
     parentId: "task-1",
-    xPercent: 65,
-    yPercent: 58,
+    col: 20,
+    row: 14,
   };
 
   const detached = detachTaskFromParent(child);
 
   assert.equal(detached.parentId, undefined);
-  assert.equal(detached.xPercent, 65);
-  assert.equal(detached.yPercent, 58);
+  assert.equal(detached.col, 20);
+  assert.equal(detached.row, 14);
 });
 
 test("lays out the first child level with the parent and stacks later children below it", () => {
-  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
+  const parent = { ...createBlankTask(1), col: 12, row: 10 };
   const firstChild = { ...createBlankTask(2), parentId: parent.id };
   const secondChild = { ...createBlankTask(3), parentId: parent.id };
 
@@ -75,61 +83,34 @@ test("lays out the first child level with the parent and stacks later children b
     laidOut.map((task) => ({
       id: task.id,
       parentId: task.parentId,
-      xPercent: task.xPercent,
-      yPercent: task.yPercent,
+      col: task.col,
+      row: task.row,
     })),
     [
-      { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
-      { id: "task-2", parentId: "task-1", xPercent: 54, yPercent: 42 },
-      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 50 },
-    ],
-  );
-});
-
-test("clamps child task spacing to pixel bounds when board size is known", () => {
-  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
-  const firstChild = { ...createBlankTask(2), parentId: parent.id };
-  const secondChild = { ...createBlankTask(3), parentId: parent.id };
-
-  const laidOut = layoutChildTasks([parent, firstChild, secondChild], parent.id, {
-    width: 3000,
-    height: 1600,
-  });
-
-  assert.deepEqual(
-    laidOut.map((task) => ({
-      id: task.id,
-      parentId: task.parentId,
-      xPercent: task.xPercent,
-      yPercent: task.yPercent,
-    })),
-    [
-      { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
-      { id: "task-2", parentId: "task-1", xPercent: 44.4, yPercent: 42 },
-      { id: "task-3", parentId: "task-1", xPercent: 44.4, yPercent: 46.25 },
+      { id: "task-1", parentId: undefined, col: 12, row: 10 },
+      { id: "task-2", parentId: "task-1", col: 19, row: 10 },
+      { id: "task-3", parentId: "task-1", col: 19, row: 12 },
     ],
   );
 });
 
 test("places a child task a fixed gap after the measured parent right edge", () => {
-  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
-  const boardSize = { width: 1000, height: 800 };
+  const parent = { ...createBlankTask(1), col: 12, row: 10 };
 
-  assert.ok(Math.abs(childXPercentAfterParentEdge(parent, 200, boardSize) - 53.8) < 0.001);
-  assert.ok(Math.abs(childXPercentAfterParentEdge(parent, 320, boardSize) - 59.8) < 0.001);
+  assert.equal(childColAfterParentEdge(parent, 200), 19);
+  assert.equal(childColAfterParentEdge(parent, 320), 23);
 });
 
 test("places a grandchild after a left-anchored child task edge", () => {
-  const childParent = { ...createBlankTask(2), parentId: "task-1", xPercent: 40, yPercent: 50 };
-  const boardSize = { width: 1000, height: 800 };
+  const childParent = { ...createBlankTask(2), parentId: "task-1", col: 12, row: 14 };
 
-  assert.ok(Math.abs(childXPercentAfterParentEdge(childParent, 200, boardSize) - 63.8) < 0.001);
+  assert.equal(childColAfterParentEdge(childParent, 200), 19);
 });
 
 test("deletes a child task and relayouts the remaining siblings", () => {
-  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
-  const firstChild = { ...createBlankTask(2), parentId: parent.id, xPercent: 54, yPercent: 50 };
-  const secondChild = { ...createBlankTask(3), parentId: parent.id, xPercent: 54, yPercent: 58 };
+  const parent = { ...createBlankTask(1), col: 12, row: 10 };
+  const firstChild = { ...createBlankTask(2), parentId: parent.id, col: 19, row: 12 };
+  const secondChild = { ...createBlankTask(3), parentId: parent.id, col: 19, row: 14 };
 
   const remaining = deleteTask([parent, firstChild, secondChild], firstChild.id);
 
@@ -137,21 +118,21 @@ test("deletes a child task and relayouts the remaining siblings", () => {
     remaining.map((task) => ({
       id: task.id,
       parentId: task.parentId,
-      xPercent: task.xPercent,
-      yPercent: task.yPercent,
+      col: task.col,
+      row: task.row,
     })),
     [
-      { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
-      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 42 },
+      { id: "task-1", parentId: undefined, col: 12, row: 10 },
+      { id: "task-3", parentId: "task-1", col: 19, row: 10 },
     ],
   );
 });
 
 test("deletes a parent task and promotes its children", () => {
-  const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
-  const child = { ...createBlankTask(2), parentId: parent.id, xPercent: 54, yPercent: 48 };
+  const parent = { ...createBlankTask(1), col: 12, row: 10 };
+  const child = { ...createBlankTask(2), parentId: parent.id, col: 19, row: 14 };
 
   const remaining = deleteTask([parent, child], parent.id);
 
-  assert.deepEqual(remaining, [{ id: "task-2", text: "", xPercent: 54, yPercent: 48 }]);
+  assert.deepEqual(remaining, [{ id: "task-2", text: "", col: 19, row: 14 }]);
 });

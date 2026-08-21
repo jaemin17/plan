@@ -4,10 +4,9 @@
   padding: 48px 24px;
   background-color: var(--bg);
   background-image:
-    linear-gradient(rgba(17, 18, 23, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(17, 18, 23, 0.055) 1px, transparent 1px);
+    radial-gradient(circle, rgba(17, 18, 23, 0.22) 0 1px, transparent 1.2px);
   background-position: 0 0;
-  background-size: 34px 34px;
+  background-size: 24px 24px;
 }
 
 .dateStampGroup {
@@ -97,15 +96,16 @@
 
 .board {
   position: relative;
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   min-height: calc(100vh - 96px);
   margin: 0 auto;
   padding: 0;
 }
 
 .taskLayer {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  min-width: 100%;
   min-height: inherit;
 }
 
@@ -130,7 +130,6 @@
     rgba(255, 255, 255, 0.55) 0 1px 2px 1px inset;
   cursor: grab;
   touch-action: none;
-  transform: translate(-50%, -50%);
   overflow: visible;
   user-select: none;
 }
@@ -142,7 +141,6 @@
 .childTaskTag {
   min-width: 140px;
   min-height: 50px;
-  transform: translateY(-50%);
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(255, 250, 240, 0.7)),
     var(--bg);

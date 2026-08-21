@@ -1,8 +1,8 @@
 export type LocalTask = {
   id: string;
   text: string;
-  xPercent: number;
-  yPercent: number;
+  col: number;
+  row: number;
   parentId?: string;
 };
 
@@ -11,100 +11,54 @@ export type BoardSize = {
   height: number;
 };
 
-const CHILD_TASK_X_OFFSET_PERCENT = 14;
-const CHILD_TASK_Y_GAP_PERCENT = 8;
-const CHILD_TASK_X_OFFSET_MIN_PX = 96;
-const CHILD_TASK_X_OFFSET_MAX_PX = 132;
-const CHILD_TASK_Y_GAP_MIN_PX = 64;
-const CHILD_TASK_Y_GAP_MAX_PX = 68;
+export const CANVAS_GRID_SIZE_PX = 34;
+export const INITIAL_CANVAS_COLS = 16;
+export const INITIAL_CANVAS_ROWS = 12;
+export const TASK_WIDTH_PX = 204;
+export const TASK_HEIGHT_PX = 170;
 const CHILD_TASK_PARENT_GAP_PX = 38;
+const CHILD_TASK_Y_GAP_ROWS = 2;
 
 export function createBlankTask(index: number): LocalTask {
   return {
     id: `task-${index}`,
     text: "",
-    xPercent: 50,
-    yPercent: 50,
+    col: Math.floor(INITIAL_CANVAS_COLS / 2),
+    row: Math.floor(INITIAL_CANVAS_ROWS / 2),
   };
 }
 
-function clampPercent(value: number) {
-  return Math.min(Math.max(value, 4), 96);
+function clampGrid(value: number) {
+  return Math.max(0, Math.round(value));
 }
 
-function clampPixelOffset(preferredPixels: number, minPixels: number, maxPixels: number) {
-  return Math.min(Math.max(preferredPixels, minPixels), maxPixels);
-}
-
-function percentOffset(
-  preferredPercent: number,
-  axisPixels: number | undefined,
-  minPixels: number,
-  maxPixels: number,
-) {
-  if (!axisPixels || axisPixels <= 0) return preferredPercent;
-
-  return (
-    (clampPixelOffset((axisPixels * preferredPercent) / 100, minPixels, maxPixels) / axisPixels) *
-    100
-  );
-}
-
-function childXOffsetPercent(boardSize?: BoardSize) {
-  return percentOffset(
-    CHILD_TASK_X_OFFSET_PERCENT,
-    boardSize?.width,
-    CHILD_TASK_X_OFFSET_MIN_PX,
-    CHILD_TASK_X_OFFSET_MAX_PX,
-  );
-}
-
-function childYGapPercent(boardSize?: BoardSize) {
-  return percentOffset(
-    CHILD_TASK_Y_GAP_PERCENT,
-    boardSize?.height,
-    CHILD_TASK_Y_GAP_MIN_PX,
-    CHILD_TASK_Y_GAP_MAX_PX,
-  );
-}
-
-export function childXPercentAfterParentEdge(
+export function childColAfterParentEdge(
   parent: LocalTask,
   parentWidthPixels: number,
-  boardSize: BoardSize,
 ): number {
-  if (boardSize.width <= 0 || parentWidthPixels <= 0) {
-    return clampPercent(parent.xPercent + childXOffsetPercent(boardSize));
-  }
-
-  const parentAnchorPixels = (parent.xPercent / 100) * boardSize.width;
-  const parentRightPixels = parent.parentId
-    ? parentAnchorPixels + parentWidthPixels
-    : parentAnchorPixels + parentWidthPixels / 2;
-  const childLeftPixels = parentRightPixels + CHILD_TASK_PARENT_GAP_PX;
-  return clampPercent((childLeftPixels / boardSize.width) * 100);
+  const parentWidth = parentWidthPixels > 0 ? parentWidthPixels : TASK_WIDTH_PX;
+  return clampGrid(parent.col + Math.round((parentWidth + CHILD_TASK_PARENT_GAP_PX) / CANVAS_GRID_SIZE_PX));
 }
 
-export function moveTask(task: LocalTask, xPercent: number, yPercent: number): LocalTask {
+export function moveTask(task: LocalTask, col: number, row: number): LocalTask {
   return {
     ...task,
-    xPercent: clampPercent(xPercent),
-    yPercent: clampPercent(yPercent),
+    col: clampGrid(col),
+    row: clampGrid(row),
   };
 }
 
 export function attachTaskToParent(
   task: LocalTask,
   parent: LocalTask,
-  boardSize?: BoardSize,
 ): LocalTask {
   if (task.id === parent.id) return task;
 
   return {
     ...task,
     parentId: parent.id,
-    xPercent: clampPercent(parent.xPercent + childXOffsetPercent(boardSize)),
-    yPercent: clampPercent(parent.yPercent),
+    col: childColAfterParentEdge(parent, TASK_WIDTH_PX),
+    row: clampGrid(parent.row),
   };
 }
 
@@ -117,40 +71,38 @@ export function detachTaskFromParent(task: LocalTask): LocalTask {
 export function layoutChildTasks(
   tasks: LocalTask[],
   parentId: string,
-  boardSize?: BoardSize,
 ): LocalTask[] {
   const parent = tasks.find((task) => task.id === parentId);
   if (!parent) return tasks;
 
   let childIndex = 0;
-  const xOffsetPercent = childXOffsetPercent(boardSize);
-  const yGapPercent = childYGapPercent(boardSize);
+  const childCol = childColAfterParentEdge(parent, TASK_WIDTH_PX);
 
   return tasks.map((task) => {
     if (task.parentId !== parentId) return task;
 
     const laidOutTask = {
       ...task,
-      xPercent: clampPercent(parent.xPercent + xOffsetPercent),
-      yPercent: clampPercent(parent.yPercent + childIndex * yGapPercent),
+      col: childCol,
+      row: clampGrid(parent.row + childIndex * CHILD_TASK_Y_GAP_ROWS),
     };
     childIndex += 1;
     return laidOutTask;
   });
 }
 
-export function layoutAllChildTasks(tasks: LocalTask[], boardSize?: BoardSize): LocalTask[] {
+export function layoutAllChildTasks(tasks: LocalTask[]): LocalTask[] {
   const parentIds = tasks
     .filter((task) => tasks.some((childTask) => childTask.parentId === task.id))
     .map((task) => task.id);
 
   return parentIds.reduce(
-    (laidOutTasks, parentId) => layoutChildTasks(laidOutTasks, parentId, boardSize),
+    (laidOutTasks, parentId) => layoutChildTasks(laidOutTasks, parentId),
     tasks,
   );
 }
 
-export function deleteTask(tasks: LocalTask[], taskId: string, boardSize?: BoardSize): LocalTask[] {
+export function deleteTask(tasks: LocalTask[], taskId: string): LocalTask[] {
   const deletedTask = tasks.find((task) => task.id === taskId);
   if (!deletedTask) return tasks;
 
@@ -163,6 +115,6 @@ export function deleteTask(tasks: LocalTask[], taskId: string, boardSize?: Board
     });
 
   return deletedTask.parentId
-    ? layoutChildTasks(promotedTasks, deletedTask.parentId, boardSize)
+    ? layoutChildTasks(promotedTasks, deletedTask.parentId)
     : promotedTasks;
 }
