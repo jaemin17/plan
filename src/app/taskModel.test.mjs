@@ -36,7 +36,7 @@ test("attaches a task to a parent and places it after the parent", () => {
 
   assert.equal(attached.parentId, "task-1");
   assert.equal(attached.xPercent, 54);
-  assert.equal(attached.yPercent, 50);
+  assert.equal(attached.yPercent, 42);
 });
 
 test("does not attach a task to itself", () => {
@@ -64,7 +64,7 @@ test("detaches a child task without moving it", () => {
   assert.equal(detached.yPercent, 58);
 });
 
-test("lays out multiple child tasks in a vertical stack after the parent", () => {
+test("lays out the first child level with the parent and stacks later children below it", () => {
   const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
   const firstChild = { ...createBlankTask(2), parentId: parent.id };
   const secondChild = { ...createBlankTask(3), parentId: parent.id };
@@ -80,8 +80,8 @@ test("lays out multiple child tasks in a vertical stack after the parent", () =>
     })),
     [
       { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
-      { id: "task-2", parentId: "task-1", xPercent: 54, yPercent: 50 },
-      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 58 },
+      { id: "task-2", parentId: "task-1", xPercent: 54, yPercent: 42 },
+      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 50 },
     ],
   );
 });
@@ -105,8 +105,8 @@ test("clamps child task spacing to pixel bounds when board size is known", () =>
     })),
     [
       { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
-      { id: "task-2", parentId: "task-1", xPercent: 44.4, yPercent: 46.25 },
-      { id: "task-3", parentId: "task-1", xPercent: 44.4, yPercent: 50.5 },
+      { id: "task-2", parentId: "task-1", xPercent: 44.4, yPercent: 42 },
+      { id: "task-3", parentId: "task-1", xPercent: 44.4, yPercent: 46.25 },
     ],
   );
 });
@@ -115,15 +115,15 @@ test("places a child task a fixed gap after the measured parent right edge", () 
   const parent = { ...createBlankTask(1), xPercent: 40, yPercent: 42 };
   const boardSize = { width: 1000, height: 800 };
 
-  assert.ok(Math.abs(childXPercentAfterParentEdge(parent, 200, boardSize) - 46) < 0.001);
-  assert.ok(Math.abs(childXPercentAfterParentEdge(parent, 320, boardSize) - 52) < 0.001);
+  assert.ok(Math.abs(childXPercentAfterParentEdge(parent, 200, boardSize) - 53.8) < 0.001);
+  assert.ok(Math.abs(childXPercentAfterParentEdge(parent, 320, boardSize) - 59.8) < 0.001);
 });
 
 test("places a grandchild after a left-anchored child task edge", () => {
   const childParent = { ...createBlankTask(2), parentId: "task-1", xPercent: 40, yPercent: 50 };
   const boardSize = { width: 1000, height: 800 };
 
-  assert.ok(Math.abs(childXPercentAfterParentEdge(childParent, 200, boardSize) - 56) < 0.001);
+  assert.ok(Math.abs(childXPercentAfterParentEdge(childParent, 200, boardSize) - 63.8) < 0.001);
 });
 
 test("deletes a child task and relayouts the remaining siblings", () => {
@@ -142,7 +142,7 @@ test("deletes a child task and relayouts the remaining siblings", () => {
     })),
     [
       { id: "task-1", parentId: undefined, xPercent: 40, yPercent: 42 },
-      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 50 },
+      { id: "task-3", parentId: "task-1", xPercent: 54, yPercent: 42 },
     ],
   );
 });

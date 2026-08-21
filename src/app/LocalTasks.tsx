@@ -209,6 +209,15 @@ export function LocalTasks() {
     return false;
   }
 
+  function firstChildParentHeightPx(task: LocalTask, currentTasks: LocalTask[]) {
+    if (!task.parentId) return undefined;
+
+    const firstChild = currentTasks.find((candidateTask) => candidateTask.parentId === task.parentId);
+    if (firstChild?.id !== task.id) return undefined;
+
+    return taskRefs.current.get(task.parentId)?.getBoundingClientRect().height;
+  }
+
   function layoutMeasuredChildTasks(currentTasks: LocalTask[], size: { width: number; height: number }) {
     const verticallyLaidOutTasks = layoutAllChildTasks(currentTasks, size);
     const measuredTasksById = new Map<string, LocalTask>();
@@ -418,39 +427,41 @@ export function LocalTasks() {
   return (
     <>
       <div ref={taskLayerRef} className={styles.taskLayer} aria-label="任务标签">
-        {tasks.map((task) => (
-          <div
-            ref={(element) => setTaskRef(task.id, element)}
-            className={[
-              styles.taskTag,
-              task.parentId ? styles.childTaskTag : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-            key={task.id}
-            onPointerDown={(event) => startDraggingTask(task, event)}
-            onPointerMove={dragTask}
-            onPointerUp={stopDraggingTask}
-            onPointerCancel={stopDraggingTask}
-            style={{
-              left: `${task.xPercent}%`,
-              top: `${task.yPercent}%`,
-            }}
-          >
-            <span className={styles.taskDragGrip} aria-hidden="true" />
-            <textarea
-              ref={editingTaskId === task.id ? editingInputRef : null}
-              className={styles.taskInput}
-              value={task.text}
-              onChange={(event) => updateTaskText(task.id, event)}
-              onFocus={() => setEditingTaskId(task.id)}
-              onBlur={() => setEditingTaskId(null)}
-              aria-label="Edit task"
-              placeholder="New task"
-              rows={1}
-            />
-          </div>
-        ))}
+        {tasks.map((task) => {
+          const firstChildParentHeight = firstChildParentHeightPx(task, tasks);
+
+          return (
+            <div
+              ref={(element) => setTaskRef(task.id, element)}
+              className={[styles.taskTag, task.parentId ? styles.childTaskTag : ""]
+                .filter(Boolean)
+                .join(" ")}
+              key={task.id}
+              onPointerDown={(event) => startDraggingTask(task, event)}
+              onPointerMove={dragTask}
+              onPointerUp={stopDraggingTask}
+              onPointerCancel={stopDraggingTask}
+              style={{
+                left: `${task.xPercent}%`,
+                minHeight: firstChildParentHeight ? `${firstChildParentHeight}px` : undefined,
+                top: `${task.yPercent}%`,
+              }}
+            >
+              <span className={styles.taskDragGrip} aria-hidden="true" />
+              <textarea
+                ref={editingTaskId === task.id ? editingInputRef : null}
+                className={styles.taskInput}
+                value={task.text}
+                onChange={(event) => updateTaskText(task.id, event)}
+                onFocus={() => setEditingTaskId(task.id)}
+                onBlur={() => setEditingTaskId(null)}
+                aria-label="Edit task"
+                placeholder="New task"
+                rows={1}
+              />
+            </div>
+          );
+        })}
       </div>
 
       <div className={styles.taskToolbar} role="toolbar" aria-label="New task toolbar">

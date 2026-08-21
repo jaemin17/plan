@@ -71,3 +71,10 @@ test("trash deletion uses task rectangle contact instead of pointer position", (
   assert.match(componentSource, /setIsOverTrash\(isTaskTouchingTrash\(dragState\.taskId\)\)/);
   assert.match(componentSource, /if \(isTaskTouchingTrash\(dragState\.taskId\)\)/);
 });
+
+test("first child task uses its parent height while later children keep natural height", () => {
+  assert.match(componentSource, /function firstChildParentHeightPx/);
+  assert.match(componentSource, /taskRefs\.current\.get\(task\.parentId\)/);
+  assert.match(componentSource, /currentTasks\.find\(\(candidateTask\) => candidateTask\.parentId === task\.parentId\)/);
+  assert.match(componentSource, /minHeight:\s*firstChildParentHeight \? `\$\{firstChildParentHeight\}px` : undefined/);
+});

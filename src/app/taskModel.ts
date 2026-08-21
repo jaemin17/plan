@@ -12,15 +12,12 @@ export type BoardSize = {
 };
 
 const CHILD_TASK_X_OFFSET_PERCENT = 14;
-const CHILD_TASK_Y_OFFSET_PERCENT = 8;
 const CHILD_TASK_Y_GAP_PERCENT = 8;
 const CHILD_TASK_X_OFFSET_MIN_PX = 96;
 const CHILD_TASK_X_OFFSET_MAX_PX = 132;
-const CHILD_TASK_Y_OFFSET_MIN_PX = 64;
-const CHILD_TASK_Y_OFFSET_MAX_PX = 68;
 const CHILD_TASK_Y_GAP_MIN_PX = 64;
 const CHILD_TASK_Y_GAP_MAX_PX = 68;
-const CHILD_TASK_PARENT_GAP_PX = -40;
+const CHILD_TASK_PARENT_GAP_PX = 38;
 
 export function createBlankTask(index: number): LocalTask {
   return {
@@ -59,15 +56,6 @@ function childXOffsetPercent(boardSize?: BoardSize) {
     boardSize?.width,
     CHILD_TASK_X_OFFSET_MIN_PX,
     CHILD_TASK_X_OFFSET_MAX_PX,
-  );
-}
-
-function childYOffsetPercent(boardSize?: BoardSize) {
-  return percentOffset(
-    CHILD_TASK_Y_OFFSET_PERCENT,
-    boardSize?.height,
-    CHILD_TASK_Y_OFFSET_MIN_PX,
-    CHILD_TASK_Y_OFFSET_MAX_PX,
   );
 }
 
@@ -116,7 +104,7 @@ export function attachTaskToParent(
     ...task,
     parentId: parent.id,
     xPercent: clampPercent(parent.xPercent + childXOffsetPercent(boardSize)),
-    yPercent: clampPercent(parent.yPercent + childYOffsetPercent(boardSize)),
+    yPercent: clampPercent(parent.yPercent),
   };
 }
 
@@ -136,7 +124,6 @@ export function layoutChildTasks(
 
   let childIndex = 0;
   const xOffsetPercent = childXOffsetPercent(boardSize);
-  const yOffsetPercent = childYOffsetPercent(boardSize);
   const yGapPercent = childYGapPercent(boardSize);
 
   return tasks.map((task) => {
@@ -145,7 +132,7 @@ export function layoutChildTasks(
     const laidOutTask = {
       ...task,
       xPercent: clampPercent(parent.xPercent + xOffsetPercent),
-      yPercent: clampPercent(parent.yPercent + yOffsetPercent + childIndex * yGapPercent),
+      yPercent: clampPercent(parent.yPercent + childIndex * yGapPercent),
     };
     childIndex += 1;
     return laidOutTask;
