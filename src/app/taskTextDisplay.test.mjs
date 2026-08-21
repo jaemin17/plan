@@ -78,3 +78,13 @@ test("first child task uses its parent height while later children keep natural 
   assert.match(componentSource, /currentTasks\.find\(\(candidateTask\) => candidateTask\.parentId === task\.parentId\)/);
   assert.match(componentSource, /minHeight:\s*firstChildParentHeight \? `\$\{firstChildParentHeight\}px` : undefined/);
 });
+
+test("drop parent selection uses task rectangles and prefers deeper targets", () => {
+  assert.match(componentSource, /function findDropParentTask/);
+  assert.match(componentSource, /function taskDepth/);
+  assert.match(componentSource, /draggedRect\.left - candidateRect\.right/);
+  assert.match(componentSource, /verticalOverlap/);
+  assert.match(componentSource, /b\.depth - a\.depth/);
+  assert.match(componentSource, /findDropParentTask\(dragState\.taskId, currentTasks\)/);
+  assert.doesNotMatch(componentSource, /draggedTask\.xPercent >= task\.xPercent \+ 6/);
+});

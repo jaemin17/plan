@@ -27,6 +27,10 @@ type DragState = {
 };
 
 const TASK_DRAG_START_DISTANCE_PX = 5;
+const TASK_DROP_PARENT_MIN_GAP_PX = -24;
+const TASK_DROP_PARENT_MAX_GAP_PX = 220;
+const TASK_DROP_PARENT_PREFERRED_GAP_PX = 38;
+const TASK_DROP_PARENT_VERTICAL_SLOP_PX = 36;
 
 export function LocalTasks() {
   const [tasks, setTasks] = useState<LocalTask[]>([]);
@@ -207,6 +211,78 @@ export function LocalTasks() {
     }
 
     return false;
+  }
+
+  function taskDepth(task: LocalTask, currentTasks: LocalTask[]) {
+    let depth = 0;
+    let parentId = task.parentId;
+
+    while (parentId) {
+      depth += 1;
+      const parentTask = currentTasks.find((candidateTask) => candidateTask.id === parentId);
+      parentId = parentTask?.parentId;
+    }
+
+    return depth;
+  }
+
+  function findDropParentTask(draggedTaskId: string, currentTasks: LocalTask[]) {
+    const draggedTask = currentTasks.find((task) => task.id === draggedTaskId);
+    const draggedElement = taskRefs.current.get(draggedTaskId);
+    if (!draggedTask || !draggedElement) return undefined;
+
+    const draggedRect = draggedElement.getBoundingClientRect();
+    const draggedCenterY = draggedRect.top + draggedRect.height / 2;
+
+    return currentTasks
+      .flatMap((candidateTask) => {
+        if (
+          candidateTask.id === draggedTask.id ||
+          isTaskDescendantOf(candidateTask, draggedTask.id, currentTasks)
+        ) {
+          return [];
+        }
+
+        const candidateElement = taskRefs.current.get(candidateTask.id);
+        if (!candidateElement) return [];
+
+        const candidateRect = candidateElement.getBoundingClientRect();
+        const horizontalGap = draggedRect.left - candidateRect.right;
+        if (
+          horizontalGap < TASK_DROP_PARENT_MIN_GAP_PX ||
+          horizontalGap > TASK_DROP_PARENT_MAX_GAP_PX
+        ) {
+          return [];
+        }
+
+        const verticalOverlap =
+          Math.min(draggedRect.bottom, candidateRect.bottom) -
+          Math.max(draggedRect.top, candidateRect.top);
+        const candidateCenterY = candidateRect.top + candidateRect.height / 2;
+        const verticalDistance = Math.abs(draggedCenterY - candidateCenterY);
+        const maxVerticalDistance =
+          Math.max(draggedRect.height, candidateRect.height) / 2 + TASK_DROP_PARENT_VERTICAL_SLOP_PX;
+        if (verticalOverlap <= 0 && verticalDistance > maxVerticalDistance) {
+          return [];
+        }
+
+        return [
+          {
+            depth: taskDepth(candidateTask, currentTasks),
+            horizontalDistance: Math.abs(horizontalGap - TASK_DROP_PARENT_PREFERRED_GAP_PX),
+            right: candidateRect.right,
+            task: candidateTask,
+            verticalDistance,
+          },
+        ];
+      })
+      .sort(
+        (a, b) =>
+          b.depth - a.depth ||
+          a.verticalDistance - b.verticalDistance ||
+          a.horizontalDistance - b.horizontalDistance ||
+          b.right - a.right,
+      )[0]?.task;
   }
 
   function firstChildParentHeightPx(task: LocalTask, currentTasks: LocalTask[]) {
@@ -392,14 +468,7 @@ export function LocalTasks() {
       const draggedTask = currentTasks.find((task) => task.id === dragState.taskId);
       if (!draggedTask) return currentTasks;
 
-      const parent = currentTasks.find(
-        (task) =>
-          task.id !== draggedTask.id &&
-          !isTaskDescendantOf(task, draggedTask.id, currentTasks) &&
-          draggedTask.xPercent >= task.xPercent + 6 &&
-          draggedTask.xPercent <= task.xPercent + 24 &&
-          Math.abs(draggedTask.yPercent - task.yPercent) <= 12,
-      );
+      const parent = findDropParentTask(dragState.taskId, currentTasks);
 
       if (!parent) {
         if (!draggedTask.parentId) return currentTasks;
