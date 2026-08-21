@@ -6,7 +6,7 @@ export default function Home() {
   return (
     <div className={styles.page}>
       <DateStamp />
-      <main className={styles.board} aria-label="计划工作区">
+      <main className={styles.board} aria-label="Next workspace">
         <LocalTasks />
       </main>
     </div>
